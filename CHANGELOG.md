@@ -45,9 +45,18 @@ in 0.21.0
   init --write`, and `npx --no-install @spec-family/spec-harness init
   --git-hook --write` where an earlier `init --git-hook` wrote git's hook;
   then `npm uninstall @descent-vtt/spec-harness @descent-vtt/spec-brief`
-  and the other `@descent-vtt` packages. A CI step or script that runs
-  `npx --no-install @descent-vtt/spec-harness doctor`, or any other
-  command, names `@spec-family/spec-harness` in its place. A plugin user
+  and the other `@descent-vtt` packages; then `npm install`. Both scopes'
+  packages name the same commands, so the uninstall takes
+  `node_modules/.bin/spec-harness` and each sibling's with it, and until
+  that `npm install` `npx --no-install @spec-family/spec-harness` starts
+  nothing; the hooks and git's hook, which run the script with `node`,
+  guard throughout, and `npm ci` is not affected (measured with npm 11.19.1
+  on 2026-10-31, and added here after the release). `$schema` in
+  `.spec-brief.json`, which `init` leaves, is changed to
+  `./node_modules/@spec-family/spec-brief/schema.json`, since the old path
+  names no file once the old package is uninstalled. A CI step or script
+  that runs `npx --no-install @descent-vtt/spec-harness doctor`, or any
+  other command, names `@spec-family/spec-harness` in its place. A plugin user
   installs `@spec-family/spec-harness` in every project the plugin guards
   first, since the plugin's hooks name it from this release on, then runs
   `claude plugin marketplace remove spec-tools`, which uninstalls the
@@ -56,7 +65,7 @@ in 0.21.0
   read 2026-10-29), `claude plugin marketplace add
   spec-family/spec-harness` and `claude plugin install
   spec-harness@spec-tools`, and only then uninstalls the `@descent-vtt`
-  packages, which the plugin it had runs.
+  packages, which the plugin it had runs, and runs `npm install` after it.
 - **`init --write` rewrites the lines 0.1.2 to 0.21.0 wrote with the
   earlier scope's script, and `doctor` says where one stands.** Claude
   Code cannot start a hook whose script is not there, and on most events
