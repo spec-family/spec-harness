@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Decision, Verdict } from '../../src/guard.js';
-import { afterResponse, CALL_VARIABLES, CALLABLE_TOOLS, callFile, callRecord, claudeResponse, gitResponse, keptCall, mendResponse, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, TURN_END, turnResponse, warningsKept, warningsOf, WRITING_TOOLS, type HookRequest } from '../../src/hooks.js';
+import { afterResponse, CALL_VARIABLES, CALLABLE_TOOLS, callFile, callRecord, claudeResponse, gitResponse, keptCall, mendResponse, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningsKept, warningsOf, WRITING_TOOLS, type HookRequest } from '../../src/hooks.js';
 
 function hook(fields: Record<string, unknown>): string {
   return JSON.stringify({ session_id: 's', hook_event_name: 'PreToolUse', tool_name: 'Write', cwd: '/repo', ...fields });
@@ -162,6 +162,42 @@ describe('answering git', () => {
   it('says nothing about a commit it allows', () => {
     expect(gitResponse([decision('allow'), decision('allow')])).toEqual({ text: '', exitCode: 0 });
     expect(gitResponse([])).toEqual({ text: '', exitCode: 0 });
+  });
+});
+
+describe("what is staged of a round's own archive", () => {
+  const LIVE = 'briefs/001_rotate.md';
+  const ARCHIVED = 'briefs/archive/001_rotate.md';
+  const OTHER = 'briefs/002_other.md';
+  const moved = { status: 'R', from: LIVE, path: ARCHIVED } as const;
+  const added = { status: 'A', path: ARCHIVED } as const;
+  const deleted = { status: 'D', path: LIVE } as const;
+
+  it('reads the move as a rename, and as a file deleted and a file added', () => {
+    expect(stagedArchive([moved], ARCHIVED, [])).toBe('alone');
+    expect(stagedArchive([deleted, added], ARCHIVED, [])).toBe('alone');
+    expect(stagedArchive([added, deleted], ARCHIVED, [])).toBe('alone');
+  });
+
+  it('takes a live brief whose links the archive rewrote, and no other file beside the move', () => {
+    const rewritten = { status: 'M', path: OTHER } as const;
+    expect(stagedArchive([moved, rewritten], ARCHIVED, [OTHER])).toBe('alone');
+    expect(stagedArchive([moved, rewritten], ARCHIVED, [])).toBe('beside');
+    expect(stagedArchive([moved, { status: 'D', path: OTHER }], ARCHIVED, [OTHER])).toBe('beside');
+    expect(stagedArchive([deleted, added, { status: 'A', path: 'src/a.ts' }], ARCHIVED, [])).toBe('beside');
+  });
+
+  it('reads a file of another name that arrives at the archive as no brief, whatever git pairs it with', () => {
+    expect(stagedArchive([{ status: 'R', from: 'src/db/schema.ts', path: ARCHIVED }], ARCHIVED, [])).toBe('beside');
+    expect(stagedArchive([{ status: 'D', path: 'src/db/schema.ts' }, added], ARCHIVED, [])).toBe('beside');
+    expect(stagedArchive([added], ARCHIVED, [])).toBe('beside');
+  });
+
+  it('finds no archive where the file is not one the commit brings', () => {
+    expect(stagedArchive([{ status: 'M', path: ARCHIVED }], ARCHIVED, [])).toBe('absent');
+    expect(stagedArchive([{ status: 'D', path: ARCHIVED }], ARCHIVED, [])).toBe('absent');
+    expect(stagedArchive([{ status: 'A', path: 'src/a.ts' }], ARCHIVED, [])).toBe('absent');
+    expect(stagedArchive([], ARCHIVED, [])).toBe('absent');
   });
 });
 

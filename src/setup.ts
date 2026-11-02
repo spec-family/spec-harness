@@ -27,13 +27,12 @@ import {
   describeHooksOff,
   describePresence,
   describeSkipped,
+  earlierPreCommit,
   GIT_HOOK_LINE,
   gitHookNote,
   GUARD_MOVED,
   holdsEarlierGuard,
   holdsEarlierServer,
-  HOOK_MOVED,
-  isEarlierPreCommit,
   type GitHookState,
   graphReadsBriefs,
   GUARD_HOOK,
@@ -148,7 +147,7 @@ function standing(path: string): Stats | null {
  * would have kept it from ever coming back. A file the account may not read
  * ended it on EACCES and a stack: it is said with what git does with it.
  */
-export async function gitHook(root: string): Promise<{ readonly hook: GitHookState; readonly path: string | null; readonly note: string | null; readonly earlier?: boolean }> {
+export async function gitHook(root: string): Promise<{ readonly hook: GitHookState; readonly path: string | null; readonly note: string | null; readonly earlier?: string | null }> {
   const where = await hookPath('pre-commit', root);
   if ('refused' in where) return { hook: { state: 'unknown', reason: `git rev-parse --git-path hooks/pre-commit failed: ${where.refused}` }, path: null, note: null };
   const { path } = where;
@@ -167,7 +166,7 @@ export async function gitHook(root: string): Promise<{ readonly hook: GitHookSta
     return { hook: { state: 'unreadable', file, runs, reason: (error as Error).message }, path, note: null };
   }
   if (!text.includes('spec-harness')) return { hook: { state: 'other', file }, path, note: null };
-  return { hook: { state: runs ? 'runs' : 'inert', file }, path, note: gitHookNote(text), earlier: isEarlierPreCommit(text) };
+  return { hook: { state: runs ? 'runs' : 'inert', file }, path, note: gitHookNote(text), earlier: earlierPreCommit(text) };
 }
 
 export async function plan(workspace: Workspace, options: Options, io: CliIO): Promise<Step[]> {
@@ -432,15 +431,17 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
   // which is said here as doctor says it; git then commits with no hook.
   if (hook.state === 'unknown') {
     steps.push({ file: 'pre-commit', action: 'advise', detail: describeGitHook(hook) });
-  } else if (hook.state === 'runs' && options.gitHook && earlier === true) {
+  } else if (hook.state === 'runs' && options.gitHook && typeof earlier === 'string') {
     // The hook an earlier release of init wrote, which runs the earlier
-    // scope's script and stops every commit once that package is gone, is
-    // init's own, and is written again where asked for, as one is created.
+    // scope's script and stops every commit once that package is gone, or
+    // 0.22.0's, which advises an install that brings no hook at a commit from
+    // before the project took the harness up, is init's own, and is written
+    // again where asked for, as one is created.
     const target = hookFile!;
     steps.push({
       file: hook.file,
       action: 'update',
-      detail: HOOK_MOVED,
+      detail: earlier,
       apply: async () => {
         await writeAtomic(target, PRE_COMMIT);
         await chmod(target, 0o755);

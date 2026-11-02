@@ -40,6 +40,9 @@ function sameStrings(value: unknown, expected: readonly string[]): boolean {
  */
 const BIN = 'node_modules/@spec-family/spec-harness/bin/spec-harness.js';
 
+/** The package the script is in, as a project's package.json names it. */
+const PACKAGE = '@spec-family/spec-harness';
+
 /** The project root, as Claude Code substitutes it in a hook's arguments and in a plugin server's. */
 export const PROJECT_DIR = '${CLAUDE_PROJECT_DIR}';
 
@@ -1794,11 +1797,39 @@ export const GIT_HOOK_LINE = `node ${BIN} hook git`;
  * repository that shares its hooks with one that uses the harness - node
  * would end on a stack trace, so the hook says what is missing and where,
  * and the commit waits, as it did when npx found nothing to run.
+ *
+ * Where the work tree's `package.json` does not name the package, installing
+ * the dependencies there brings no script: the commit checked out is one from
+ * before the project took the harness up, or the package is not installed
+ * through that file. The hook says so in place of advising the install. The
+ * commit waits all the same: a file that names no package does not tell an
+ * old commit from a project that installs the harness from a workspace of its
+ * own, and a guard that let one through for the other would answer for
+ * nothing.
  */
-export const PRE_COMMIT = preCommit(BIN);
+export const PRE_COMMIT = `#!/bin/sh
+# spec-harness: refuse a commit that changes what the active brief protects.
+# git runs this at the top of the work tree it commits in, a linked worktree's
+# own, wherever the hook is kept: the project's install is read from there,
+# or, where a linked worktree has none, from the repository's main work tree.
+bin=${BIN}
+if [ ! -f "$bin" ]; then
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+  if [ "\${common##*/}" = .git ] && [ -f "\${common%/.git}/$bin" ]; then
+    bin=\${common%/.git}/$bin
+  elif grep -q '"${PACKAGE}"' package.json 2>/dev/null; then
+    printf '%s\\n' "spec-harness: $bin is not in $PWD, the work tree git commits in, nor in its repository's main work tree: install the project's dependencies there, as with npm ci, and commit again" >&2
+    exit 2
+  else
+    printf '%s\\n' "spec-harness: $bin is not in $PWD, the work tree git commits in, nor in its repository's main work tree, and package.json there names no ${PACKAGE}: a commit from before the project took it up has no hook to run, and installing its dependencies brings none, so the commit waits" >&2
+    exit 2
+  fi
+fi
+exec node "$bin" hook git
+`;
 
-/** The hook, run with the script at `bin`: init's, and the one 0.19.0 to 0.21.0 wrote with the earlier scope's script. */
-function preCommit(bin: string): string {
+/** The hook 0.19.0 to 0.22.0 wrote, run with the script at `bin`: 0.22.0's with this scope's, and the earlier releases' with the earlier scope's. */
+function waitingPreCommit(bin: string): string {
   return `#!/bin/sh
 # spec-harness: refuse a commit that changes what the active brief protects.
 # git runs this at the top of the work tree it commits in, a linked worktree's
@@ -1818,16 +1849,21 @@ exec node "$bin" hook git
 `;
 }
 
+/** The hook 0.22.0 wrote, which advises the install at a commit from before the project took the harness up too. */
+const RELEASED_PRE_COMMIT = waitingPreCommit(BIN);
+
 /**
- * The hooks the releases from 0.10.0 to 0.21.0 wrote, which run the earlier
- * scope's script: 0.19.0 to 0.21.0 the hook init writes now, and 0.10.0 to
- * 0.18.0 one that looks in no main work tree, as its tag has it. Once that
- * package is uninstalled either stops every commit, as where the install is
- * not there, so `init --git-hook --write` writes init's hook over one. A
- * hook with anything else in it is the repository's own.
+ * The hooks earlier releases wrote, each written over by `init --git-hook
+ * --write`. 0.22.0's runs this scope's script, and only its words differ.
+ * 0.10.0 to 0.21.0 ran the earlier scope's: 0.19.0 to 0.21.0 the hook 0.22.0
+ * wrote, and 0.10.0 to 0.18.0 one that looks in no main work tree, as its tag
+ * has it. Once that package is uninstalled either stops every commit, as
+ * where the install is not there. A hook with anything else in it is the
+ * repository's own.
  */
 const EARLIER_PRE_COMMITS: readonly string[] = [
-  preCommit(EARLIER_BIN),
+  RELEASED_PRE_COMMIT,
+  waitingPreCommit(EARLIER_BIN),
   `#!/bin/sh
 # spec-harness: refuse a commit that changes what the active brief protects.
 # git runs this at the top of the work tree it commits in, a linked worktree's
@@ -1841,13 +1877,22 @@ exec node "$bin" hook git
 `,
 ];
 
-/** Whether a pre-commit hook is one an earlier release of init wrote, which runs the earlier scope's script. */
+/** Whether a pre-commit hook is one an earlier release of init wrote, which init writes again where asked to. */
 export function isEarlierPreCommit(text: string): boolean {
   return EARLIER_PRE_COMMITS.includes(text);
 }
 
-/** What init says where it writes its hook over one an earlier release wrote. */
+/** What init says where it writes its hook over one an earlier release wrote that runs the earlier scope's script. */
 export const HOOK_MOVED = `the hook an earlier release of init wrote, which runs ${EARLIER_BIN}, written again to run ${BIN}`;
+
+/** What init says where it writes its hook over the one 0.22.0 wrote. */
+export const HOOK_RENEWED = `the hook init wrote in 0.22.0, written again to say, where the script is not installed, whether package.json names ${PACKAGE}`;
+
+/** What init says where it writes its hook over one an earlier release wrote, or null where the text is no such hook. */
+export function earlierPreCommit(text: string): string | null {
+  if (text === RELEASED_PRE_COMMIT) return HOOK_RENEWED;
+  return isEarlierPreCommit(text) ? HOOK_MOVED : null;
+}
 
 /**
  * What doctor and init add of a hook whose text runs the harness through
@@ -1862,6 +1907,10 @@ export const HOOK_MOVED = `the hook an earlier release of init wrote, which runs
  * package is installed, and the script is not there once it is not. A note
  * too: the hook runs as it did, and what it does once the package is gone
  * is the hook's own text to say.
+ *
+ * And of the hook 0.22.0 wrote, which guards as init's does and advises the
+ * install at a commit from before the project took the harness up too, where
+ * the install brings none: a note, so that the hook is written again.
  */
 export function gitHookNote(text: string): string | null {
   const lines = text.split('\n');
@@ -1873,6 +1922,9 @@ export function gitHookNote(text: string): string | null {
   if (earlier) {
     const mend = isEarlierPreCommit(text) ? `it is the hook an earlier release of init wrote, and spec-harness init --git-hook --write writes it again to run ${BIN}` : `name ${BIN} there in its place`;
     said.push(`it runs ${EARLIER_BIN}, the script of @descent-vtt/spec-harness, the name of this package's releases up to 0.21.0, which is not there once that package is uninstalled: ${mend}`);
+  }
+  if (text === RELEASED_PRE_COMMIT) {
+    said.push(`it is the hook init wrote in 0.22.0, which advises installing the dependencies where the script is not there, at a commit from before the project took up ${PACKAGE} too, where they bring none: spec-harness init --git-hook --write writes it again`);
   }
   return said.length === 0 ? null : said.join('; ');
 }

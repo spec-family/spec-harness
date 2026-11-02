@@ -27,7 +27,7 @@ import { gitDirectories, isDirectory, keepCall, loadConfig, mainWorkTree, outsid
 import { changedPaths, GitError, holdsPath, isShallow, show, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
-import { afterResponse, callFile, callRecord, claudeResponse, gitResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
+import { afterResponse, callFile, callRecord, claudeResponse, gitResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
 import type { Base } from './round.js';
 import type { BriefRow } from './types.js';
 import { declaredVersion, SiblingError } from './siblings.js';
@@ -158,13 +158,15 @@ function keptFor(workspace: Workspace, session: string | null): Workspace {
  * no brief's, and in words of its own, since nothing on it is to be mended:
  * its round ends when the branch merges (ADR-0004).
  */
-function closesRound(active: ActiveBrief): boolean {
+function closesRound(active: ActiveBrief): active is Extract<ActiveBrief, { readonly kind: 'archived' }> {
   return active.kind === 'archived' && active.source === 'branch';
 }
 
 /** What the hook says after what holds the write: how to mend it, or that a closed round's branch has nothing to mend. */
 const MEND = 'Fix the brief or the branch before writing.';
 const CLOSED = 'The round is archived and ends when this branch merges: write on the branch of a live brief.';
+/** What git's hook says where the archive of the round's brief is staged beside something else. */
+const ARCHIVE_ALONE = "The archive is a closed round's last commit, and takes nothing else with it: unstage the rest.";
 
 async function decisionsFor(
   workspace: Workspace,
@@ -173,7 +175,7 @@ async function decisionsFor(
   given: readonly string[],
   cwd: string,
   session: string | null = null,
-): Promise<{ readonly decisions: Decision[]; readonly brief: BriefRow | null } | { readonly problem: string; readonly closed: boolean }> {
+): Promise<{ readonly decisions: Decision[]; readonly brief: BriefRow | null } | { readonly problem: string; readonly closed: BriefRow | null }> {
   // A path outside every work tree of the repository is decided as one
   // outside it, whichever brief is named and whatever is wrong with the
   // name: the problem held every write, a file outside the repository
@@ -183,7 +185,7 @@ async function decisionsFor(
   const active = outside ? null : await activeBrief(keptFor(workspace, session), options, io.env);
   const { brief, note, problem } = active === null ? { brief: null, note: undefined, problem: null } : describeActive(active);
   // A problem is said only of a brief something names, so `active` is one.
-  if (problem !== null) return { problem, closed: closesRound(active!) };
+  if (problem !== null) return { problem, closed: closesRound(active!) ? active.brief : null };
   const { checkPaths } = await import('./round.js');
   return { decisions: await checkPaths(workspace, brief, note, given, cwd, reader, options.base), brief };
 }
@@ -502,7 +504,7 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
           // Exit 2 blocks the tool call, and its stderr reaches the model. Where
           // the name stands on the hook's own line, what is wrong with it is
           // `doctor`'s to say as well, in the same words (usage.ts).
-          io.stderr.write(`spec-harness: ${heldHookLine(decided.problem).wrong}. ${decided.closed ? CLOSED : MEND}\n`);
+          io.stderr.write(`spec-harness: ${heldHookLine(decided.problem).wrong}. ${decided.closed === null ? MEND : CLOSED}\n`);
           return EXIT_ERROR;
         }
         // A line of the answer for each path, by the work tree that decided it.
@@ -540,7 +542,19 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
     if (paths.length === 0) return EXIT_OK;
     const decided = await decisionsFor(workspace, options, io, paths, workspace.root);
     if ('problem' in decided) {
-      io.stderr.write(`spec-harness: ${decided.problem}\n`);
+      const { closed, problem } = decided;
+      if (closed === null) {
+        io.stderr.write(`spec-harness: ${problem}\n`);
+        return EXIT_ERROR;
+      }
+      // The round's last commit is on its own branch, whose name by then is a
+      // closed round's: held with the rest, a round could only be archived
+      // after it merged, where spec-brief has no diff to measure its scope
+      // by (ADR-0004).
+      const live = (await workspace.siblings.briefs()).filter((row) => row.phase === 'live').map((row) => row.file);
+      const archive = stagedArchive(staged, closed.file, live);
+      if (archive === 'alone') return EXIT_OK;
+      io.stderr.write(`spec-harness: ${problem}. ${archive === 'beside' ? ARCHIVE_ALONE : CLOSED}\n`);
       return EXIT_ERROR;
     }
     const response = gitResponse(decided.decisions);

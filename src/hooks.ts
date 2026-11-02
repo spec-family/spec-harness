@@ -15,7 +15,10 @@
  * additional context, where it cannot unlock anything.
  */
 
+import { posix } from 'node:path';
+
 import type { Decision } from './guard.js';
+import type { FileChange } from './types.js';
 
 /**
  * The tools whose input names a file they write, by every name a release of
@@ -353,4 +356,28 @@ export function gitResponse(decisions: readonly Decision[]): { readonly text: st
   }
   if (refused > 0) lines.push(`spec-harness: ${refused} file(s) this round may not change; the commit was stopped`);
   return { text: lines.length === 0 ? '' : `${lines.join('\n')}\n`, exitCode: refused > 0 ? 1 : 0 };
+}
+
+/**
+ * What a commit on a closed round's branch holds of the round's own archive,
+ * the move of its brief to `archived`, the file spec-brief lists it at now,
+ * which is the round's last commit (ADR-0004). `alone`: that move and what
+ * spec-brief's archive writes beside it, the links `live` briefs hold to the
+ * file. `beside`: that move and anything else. `absent`: no such move. git
+ * says a rename where the two files read alike, and a file deleted and a
+ * file added where they do not, as a short brief under a long summary does.
+ * spec-brief keeps the file's name, so a file of another name git pairs with
+ * this one is not the brief, whatever it reads like.
+ */
+export function stagedArchive(staged: readonly FileChange[], archived: string, live: readonly string[]): 'alone' | 'beside' | 'absent' {
+  const arrived = staged.find((change) => change.path === archived && (change.status === 'A' || change.status === 'R'));
+  if (arrived === undefined) return 'absent';
+  // A second file deleted beside the brief is no move of it, so the first
+  // stands for every one: of another name it is no brief, and of the name,
+  // what is left holds the other.
+  const name = posix.basename(archived);
+  const left = arrived.from ?? staged.find((change) => change.status === 'D')?.path;
+  if (left === undefined || posix.basename(left) !== name) return 'beside';
+  const rest = staged.filter((change) => change !== arrived && change.path !== left);
+  return rest.every((change) => change.status === 'M' && live.includes(change.path)) ? 'alone' : 'beside';
 }

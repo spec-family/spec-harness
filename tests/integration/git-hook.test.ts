@@ -13,6 +13,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PRE_COMMIT } from '../../src/configure.js';
+import { releasedHook } from './released-hooks.js';
 import { brief, BRIEF_FILE, cleanup, cli, install, installFake, installHarness, parsed, repository, ROOT, temp, type Repository } from './helpers.js';
 
 afterAll(cleanup);
@@ -32,6 +33,12 @@ const REFUSED = [
 const NOT_INSTALLED = new RegExp(
   `^spec-harness: ${SCRIPT.replaceAll('.', '\\.')} is not in \\S.*, the work tree git commits in, nor in its repository's main work tree: install the project's dependencies there, as with npm ci, and commit again\\n$`,
 );
+/** What it says where, besides, the work tree's package.json names no spec-harness, as at a commit from before the project took it up. */
+const NOT_TAKEN_UP = new RegExp(
+  `^spec-harness: ${SCRIPT.replaceAll('.', '\\.')} is not in \\S.*, the work tree git commits in, nor in its repository's main work tree, and package.json there names no @spec-family/spec-harness: a commit from before the project took it up has no hook to run, and installing its dependencies brings none, so the commit waits\\n$`,
+);
+/** A project's package.json, which names the harness as a project that took it up does. */
+const MANIFEST = `${JSON.stringify({ devDependencies: { '@spec-family/spec-harness': '^0.23.0' } }, null, 2)}\n`;
 
 /** The hook's `node` is this Node, found first on PATH, as a person's is. */
 function environment(): NodeJS.ProcessEnv {
@@ -39,8 +46,8 @@ function environment(): NodeJS.ProcessEnv {
 }
 
 /** `git commit` of what is staged, as a person runs it, from `cwd`. */
-function commit(cwd: string): { code: number | null; stdout: string; stderr: string } {
-  const result = spawnSync('git', ['commit', '-q', '-m', 'work'], { cwd, encoding: 'utf8', env: environment() });
+function commit(cwd: string, env: NodeJS.ProcessEnv = {}): { code: number | null; stdout: string; stderr: string } {
+  const result = spawnSync('git', ['commit', '-q', '-m', 'work'], { cwd, encoding: 'utf8', env: { ...environment(), ...env } });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -49,12 +56,13 @@ function commit(cwd: string): { code: number | null; stdout: string; stderr: str
  * writes, the hook with it, on the round's branch. What init wrote is on the
  * base, so a round's commit holds only what the test stages.
  */
-async function guarded(): Promise<Repository> {
+async function guarded(files: Readonly<Record<string, string>> = {}): Promise<Repository> {
   const repo = repository({
     [BRIEF_FILE]: brief({ affected: ['src/auth/**'], protected: ['src/db/**'] }),
     '.gitignore': 'node_modules/\n',
     'src/db/schema.ts': 'table;\n',
     'src/auth/a.ts': 'a;\n',
+    ...files,
   });
   installHarness(repo.root);
   const written = await cli(['init', '--git-hook', '--write'], repo.root);
@@ -129,7 +137,7 @@ describe('the pre-commit hook init writes, run by git', () => {
   });
 
   it('stops the commit in a linked worktree where neither it nor the main work tree has the install', async () => {
-    const repo = repository({ [BRIEF_FILE]: brief({ affected: ['src/auth/**'], protected: ['src/db/**'] }), 'src/auth/a.ts': 'a;\n' });
+    const repo = repository({ [BRIEF_FILE]: brief({ affected: ['src/auth/**'], protected: ['src/db/**'] }), 'src/auth/a.ts': 'a;\n', 'package.json': MANIFEST });
     repo.write('.git/hooks/pre-commit', PRE_COMMIT);
     chmodSync(join(repo.root, '.git', 'hooks', 'pre-commit'), 0o755);
     const linked = join(temp(), 'linked');
@@ -198,8 +206,49 @@ describe('the pre-commit hook init writes, run by git', () => {
     const before = head(other.root);
     const stopped = commit(other.root);
     expect(stopped.code).toBe(1);
-    expect(stopped.stderr).toMatch(NOT_INSTALLED);
+    // It names no spec-harness in a package.json, so no install is advised.
+    expect(stopped.stderr).toMatch(NOT_TAKEN_UP);
     expect(head(other.root)).toBe(before);
+  });
+
+  it('says of a commit from before the project took the harness up that no install brings it, and the commit waits', async () => {
+    const repo = repository({ 'src/a.ts': 'a;\n', 'package.json': '{ "devDependencies": { "typescript": "^7.0.0" } }\n' }, null);
+    const early = head(repo.root);
+    repo.write('package.json', MANIFEST);
+    repo.commit('take up spec-harness');
+    repo.write('.git/hooks/pre-commit', PRE_COMMIT);
+    chmodSync(join(repo.root, '.git', 'hooks', 'pre-commit'), 0o755);
+    // A commit from before, checked out with no install anywhere.
+    repo.git('checkout', '-q', '-b', 'hotfix', early);
+    repo.write('src/a.ts', 'fixed;\n');
+    repo.git('add', '-A');
+    const stopped = commit(repo.root);
+    expect(stopped).toEqual({ code: 1, stdout: '', stderr: expect.stringMatching(NOT_TAKEN_UP) });
+    expect(head(repo.root)).toBe(early);
+    // The commit that took it up names it, where an install brings it.
+    repo.git('stash', '-q');
+    repo.git('checkout', '-q', 'main');
+    repo.write('src/a.ts', 'fixed;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root).stderr).toMatch(NOT_INSTALLED);
+  });
+
+  it('is written again where 0.22.0 wrote it, by init --git-hook --write, and noted by init until then', async () => {
+    const repo = await guarded();
+    repo.write('.git/hooks/pre-commit', releasedHook(SCRIPT));
+    chmodSync(join(repo.root, '.git', 'hooks', 'pre-commit'), 0o755);
+    const NOTE =
+      'it is the hook init wrote in 0.22.0, which advises installing the dependencies where the script is not there, at a commit from before the project took up @spec-family/spec-harness too, where they bring none: spec-harness init --git-hook --write writes it again';
+    const kept = parsed<{ steps: { file: string; action: string; detail: string }[] }>(await cli(['init', '--format', 'json'], repo.root)).steps;
+    expect(kept.find((step) => step.file === '.git/hooks/pre-commit')).toEqual({ file: '.git/hooks/pre-commit', action: 'keep', detail: `already runs spec-harness; ${NOTE}` });
+    expect(repo.read('.git/hooks/pre-commit')).toBe(releasedHook(SCRIPT));
+    const written = parsed<{ steps: { file: string; action: string; detail: string }[] }>(await cli(['init', '--git-hook', '--write', '--format', 'json'], repo.root)).steps;
+    expect(written.find((step) => step.file === '.git/hooks/pre-commit')).toEqual({
+      file: '.git/hooks/pre-commit',
+      action: 'update',
+      detail: 'the hook init wrote in 0.22.0, written again to say, where the script is not installed, whether package.json names @spec-family/spec-harness',
+    });
+    expect(repo.read('.git/hooks/pre-commit')).toBe(PRE_COMMIT);
   });
 
   it('runs from a hooks directory core.hooksPath names in the work tree', async () => {
@@ -210,6 +259,84 @@ describe('the pre-commit hook init writes, run by git', () => {
     repo.write('src/db/schema.ts', 'changed;\n');
     repo.git('add', 'src/db/schema.ts');
     expect(commit(join(repo.root, 'src', 'auth'))).toEqual({ code: 1, stdout: '', stderr: REFUSED });
+  });
+});
+
+describe("the round's last commit, on its own branch", () => {
+  const ARCHIVED = 'briefs/archive/001_rotate-tokens.md';
+  const HELD = 'spec-harness: the branch names brief 001, which is archived; a closed round writes nothing.';
+
+  /** The round's work, committed, and spec-brief's own archive of its brief, as step 10 of the tutorial has it: nothing committed, everything staged. */
+  async function archived(files: Readonly<Record<string, string>> = {}): Promise<Repository> {
+    const repo = await guarded(files);
+    repo.write('src/auth/a.ts', 'b;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root).code).toBe(0);
+    const script = join(ROOT, 'node_modules', '@spec-family', 'spec-brief', 'bin', 'spec-brief.js');
+    const run = spawnSync(process.execPath, [script, 'archive', '001', '--base', 'main', '--summary', 'Tokens rotate.'], { cwd: repo.root, encoding: 'utf8', env: environment() });
+    expect(run.status, run.stdout).toBe(0);
+    repo.git('add', '-A');
+    return repo;
+  }
+
+  it('takes the commit that archives the brief, and holds every commit after it', async () => {
+    const repo = await archived();
+    expect(repo.git('diff', '--cached', '--name-status')).toContain(`\t${ARCHIVED}`);
+    const before = head(repo.root);
+    expect(commit(repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });
+    expect(head(repo.root)).not.toBe(before);
+    expect(existsSync(join(repo.root, BRIEF_FILE))).toBe(false);
+
+    repo.write('src/auth/a.ts', 'c;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root)).toEqual({ code: 1, stdout: '', stderr: `${HELD} The round is archived and ends when this branch merges: write on the branch of a live brief.\n` });
+  });
+
+  it('takes the link spec-brief rewrites in a live brief with it', async () => {
+    const repo = await archived({ 'briefs/002_other.md': brief({ title: '002 - Other', status: 'draft', body: '[The tokens](001_rotate-tokens.md).' }) });
+    expect(repo.read('briefs/002_other.md')).toContain('archive/001_rotate-tokens.md');
+    expect(commit(repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('takes the move where the two files read too little alike for git to call it a rename', async () => {
+    const repo = await archived();
+    repo.write(ARCHIVED, `${repo.read(ARCHIVED)}\n${'A long summary of what the round found.\n'.repeat(200)}`);
+    repo.git('add', '-A');
+    expect(repo.git('diff', '--cached', '--name-status').split('\n').map((line) => line.charAt(0)).sort().join('')).toBe('AD');
+    expect(commit(repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('refuses the archive with anything else staged beside it', async () => {
+    const repo = await archived();
+    repo.write('src/auth/a.ts', 'c;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root)).toEqual({ code: 1, stdout: '', stderr: `${HELD} The archive is a closed round's last commit, and takes nothing else with it: unstage the rest.\n` });
+  });
+
+  it('refuses the archive where the brief is named by anything but the branch, as a brief named there is no round closing here', async () => {
+    const repo = await archived();
+    expect(commit(repo.root, { SPEC_BRIEF: '001' })).toEqual({ code: 1, stdout: '', stderr: 'spec-harness: the environment names brief 001, which is archived; a closed round writes nothing\n' });
+  });
+
+  it('holds a conflict resolved on the closed branch, a write of its own, and passes a merge that needed none', async () => {
+    const repo = await archived();
+    expect(commit(repo.root).code).toBe(0);
+    repo.git('checkout', '-q', 'main');
+    repo.write('src/auth/z.ts', 'z;\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '--no-verify', '-m', 'main moves');
+    repo.git('checkout', '-q', 'brief/001-rotate');
+    repo.git('merge', '-q', '--no-edit', 'main');
+    repo.git('checkout', '-q', 'main');
+    repo.write('src/auth/a.ts', 'main;\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '--no-verify', '-m', 'main moves again');
+    repo.git('checkout', '-q', 'brief/001-rotate');
+    const merge = spawnSync('git', ['merge', 'main'], { cwd: repo.root, encoding: 'utf8', env: environment() });
+    expect(merge.status).toBe(1);
+    repo.write('src/auth/a.ts', 'both;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root).stderr).toContain(HELD);
   });
 });
 

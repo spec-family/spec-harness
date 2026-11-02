@@ -2745,6 +2745,36 @@ An exit code that can change for a tree that passed is a minor release
   start either. Its hooks are not read (ADR-0012), and `doctor` says it
   brings the guard hooks, exit 0.
 
+*Amended 2026-11-02.* **git's hook says when the work tree's package.json
+names no spec-harness.** The hook lives in the repository's hooks, which
+every work tree and every commit checked out share. *Claimed* by a consumer
+of the family: at a commit from before the project took the harness up,
+with no install anywhere, the hook stopped the commit and said to install
+the dependencies, as with `npm ci`, and that commit's `package.json` has no
+spec-harness to install. *Measured* with 0.22.0 from npm: the main checkout
+at such a commit, its `node_modules` left behind, and a linked worktree at
+it, the main checkout's install there, both commit, the hook reading the
+install that is there; with no install anywhere the commit stops, exit 2,
+and `npm ci` there installs nothing that brings the script.
+
+- **Where the script is in neither work tree, the hook reads the work
+  tree's `package.json` for `"@spec-family/spec-harness"`.** Where it is
+  named, the install brings the script, and the hook says to install, as
+  before. Where it is not, the hook says so: a commit from before the
+  project took it up has no hook to run, and installing its dependencies
+  brings none. `grep` is in every `sh` git runs a hook with.
+- **The commit waits all the same, exit 2.** A `package.json` that names no
+  spec-harness does not tell a commit from before the project took it up
+  from a project that installs it some other way, from a workspace's own
+  manifest or by hand, and a hook that let the one through would let the
+  other through unguarded. What to do with such a commit is the person's
+  choice, and the hook names none: a bypass written where an agent reads
+  the refusal is one the agent takes.
+- **`init --git-hook --write` writes the hook again** where it finds the
+  one 0.22.0 wrote, byte for byte (`update`), and without `--git-hook`
+  keeps it with a note, as `doctor` notes it: the hook 0.22.0 wrote guards
+  as this one does, and differs in what it says.
+
 ## Consequences
 
 An agent that writes through a shell passes the guard and is caught at the

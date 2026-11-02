@@ -327,6 +327,56 @@ So the claim holds.
 An exit code that can change for a tree that passed is a minor release
 (spec-core's ADR-0009).
 
+*Amended 2026-11-02.* **git's hook takes the commit that archives the
+round's brief.** The amendment of 2026-10-24 has `doctor` pass the branch
+that archived its brief, and the hook hold every write on it, and it read
+the hook as Claude Code's. `hook git` reads the same name. *Claimed* by a
+consumer of the family, and evaluated: in a repository with git's hook, the
+commit of step 10 of spec-core's tutorial is refused, since spec-brief has
+moved the brief in the work tree and the move is in the index, where
+`doctor`'s reading of HEAD does not reach. That consumer merged first and
+archived after, and spec-brief then had no diff to measure the scope by:
+`archive/scope-unmeasured`, on a base the commit was already in. *Measured*
+with @spec-family/spec-harness 0.22.0 and this change, spec-brief 0.12.0
+(Windows 11, Node 24.22.1, Git for Windows 2.56.0), each by a real
+`git commit`, on the round's branch, of what is staged:
+
+| Staged | 0.22.0 | Now |
+| --- | --- | --- |
+| what `spec-brief archive 001 --base main` left, a rename | refused | the commit, and nothing said |
+| the same, and a link it rewrote in a live brief | refused | the commit |
+| the same move, which git calls a file deleted and a file added | refused | the commit |
+| that move and any other file | refused | refused: unstage the rest |
+| any file, the archive committed | refused | refused: the round ends when the branch merges |
+| a conflict resolved, after `git merge main` | refused | refused |
+| the move, `SPEC_BRIEF=001` naming the brief | refused | refused |
+
+- **What tells that commit from the rest is the index, read by `hook git`
+  alone.** Where the branch names a brief spec-brief lists as archived, the
+  hook asks whether the staged changes bring the file spec-brief lists it
+  at, and take away a file of that name: spec-brief keeps the name, and git
+  says a rename only of files that read alike, which a short brief under a
+  long summary does not. `describeActive` is not touched, so Claude Code's
+  hook, `guard` and `check_path` answer as before, and no write of
+  spec-brief's reaches them.
+- **Beside the move, what spec-brief's archive writes, and nothing else.**
+  The archive rewrites the links live briefs hold to the file, so a file
+  spec-brief lists as live may be modified in that commit; a brief's file is
+  writable throughout a round. Anything else staged holds the commit, with
+  the archive named: a closed round's last commit is the archive and no more.
+- **A merge that stops on a conflict stays held.** Its resolution is a write
+  no round's scope read, and the branch has no brief left to read one by. A
+  merge git finishes by itself runs no pre-commit hook. The base is merged
+  in before the archive, or a person takes `git commit --no-verify` for it.
+- **What passes that arguably should not.** A brief moved into the archive
+  by hand reaches the branch without spec-brief's archive having run, and a
+  deleted file of the brief's name takes the brief's place in the reading.
+  Accepted: the hook is a guardrail, the audit and spec-brief's archive are
+  the gates (ADR-0005), and every later write on the branch is held.
+
+An exit code that changes for a tree that failed is a minor release
+(spec-core's ADR-0009).
+
 ## Consequences
 
 No file records the active brief, so no file can record it wrongly, and two

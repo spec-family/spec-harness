@@ -24,6 +24,7 @@ import {
   describeGraph,
   describeSigners,
   describeSkipped,
+  earlierPreCommit,
   enabledPlugin,
   exportedFile,
   graphReadsBriefs,
@@ -36,6 +37,7 @@ import {
   holdsEarlierGuard,
   holdsEarlierServer,
   HOOK_MOVED,
+  HOOK_RENEWED,
   isEarlierPreCommit,
   isStarted,
   loadsEarlierPlugin,
@@ -80,6 +82,7 @@ import {
 } from '../../src/configure.js';
 import { claudeHookLine, elsewhereHookLine, heldHookLine, holderHookLine, outsideHookLine, type HookLine } from '../../src/usage.js';
 import { parseOptions } from '../../src/workspace.js';
+import { releasedHook } from './helpers.js';
 
 const SCRIPT = '${CLAUDE_PROJECT_DIR}/node_modules/@spec-family/spec-harness/bin/spec-harness.js';
 
@@ -664,8 +667,11 @@ describe("what doctor says of the keys, the Claude Code release and git's hook",
         '  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)',
         '  if [ "${common##*/}" = .git ] && [ -f "${common%/.git}/$bin" ]; then',
         '    bin=${common%/.git}/$bin',
-        '  else',
+        `  elif grep -q '"@spec-family/spec-harness"' package.json 2>/dev/null; then`,
         `    printf '%s\\n' "spec-harness: $bin is not in $PWD, the work tree git commits in, nor in its repository's main work tree: install the project's dependencies there, as with npm ci, and commit again" >&2`,
+        '    exit 2',
+        '  else',
+        `    printf '%s\\n' "spec-harness: $bin is not in $PWD, the work tree git commits in, nor in its repository's main work tree, and package.json there names no @spec-family/spec-harness: a commit from before the project took it up has no hook to run, and installing its dependencies brings none, so the commit waits" >&2`,
         '    exit 2',
         '  fi',
         'fi',
@@ -2386,7 +2392,7 @@ describe("the lines 0.21.0 and earlier wrote, with the script of the scope the f
 
   describe("in git's pre-commit hook", () => {
     /** The hook 0.19.0 to 0.21.0 wrote: init's now, with the earlier script. Read in a test: read as the file loads, a mutant under which init's hook is no text would stop the file, and fail no test. */
-    const hook19 = (): string => PRE_COMMIT.split(BIN).join(EARLIER_BIN);
+    const hook19 = (): string => releasedHook(EARLIER_BIN);
     /** The hook 0.10.0 to 0.18.0 wrote, as their tags have it. */
     const HOOK_10 = "#!/bin/sh\n# spec-harness: refuse a commit that changes what the active brief protects.\n# git runs this at the top of the work tree it commits in, a linked worktree's\n# own, wherever the hook is kept: the project's install is read from there.\nbin=node_modules/@descent-vtt/spec-harness/bin/spec-harness.js\nif [ ! -f \"$bin\" ]; then\n  printf '%s\\n' \"spec-harness: $bin is not in $PWD, the work tree git commits in: install the project's dependencies there, as with npm ci, and commit again\" >&2\n  exit 2\nfi\nexec node \"$bin\" hook git\n";
     const NOTE = `it runs ${EARLIER_BIN}, the script of @descent-vtt/spec-harness, the name of this package's releases up to 0.21.0, which is not there once that package is uninstalled`;
@@ -2399,6 +2405,23 @@ describe("the lines 0.21.0 and earlier wrote, with the script of the scope the f
       expect(isEarlierPreCommit(hook19())).toBe(true);
       expect(isEarlierPreCommit(HOOK_10)).toBe(true);
       for (const text of [PRE_COMMIT, `${hook19()}npm test\n`, HOOK_10.split('\n').join('\r\n'), HOOK_10.trimEnd(), '']) expect(isEarlierPreCommit(text), JSON.stringify(text)).toBe(false);
+      // 0.22.0's runs this scope's script, and is written again for its words alone.
+      expect(releasedHook(BIN)).not.toBe(PRE_COMMIT);
+      expect(isEarlierPreCommit(releasedHook(BIN))).toBe(true);
+    });
+
+    it('is written again by init with what it was: the earlier scope\'s, or the one 0.22.0 wrote', () => {
+      expect(earlierPreCommit(hook19())).toBe(HOOK_MOVED);
+      expect(earlierPreCommit(HOOK_10)).toBe(HOOK_MOVED);
+      expect(earlierPreCommit(releasedHook(BIN))).toBe(HOOK_RENEWED);
+      expect(HOOK_RENEWED).toBe('the hook init wrote in 0.22.0, written again to say, where the script is not installed, whether package.json names @spec-family/spec-harness');
+      for (const text of [PRE_COMMIT, `${releasedHook(BIN)}npm test\n`, '']) expect(earlierPreCommit(text), JSON.stringify(text)).toBeNull();
+    });
+
+    it("notes 0.22.0's hook, which guards as init's does, so that init writes it again", () => {
+      expect(gitHookNote(releasedHook(BIN))).toBe(
+        'it is the hook init wrote in 0.22.0, which advises installing the dependencies where the script is not there, at a commit from before the project took up @spec-family/spec-harness too, where they bring none: spec-harness init --git-hook --write writes it again',
+      );
     });
 
     it('is noted with how to move it: init writes its own hook again, and a hook of the repository\'s own names this package\'s script', () => {
