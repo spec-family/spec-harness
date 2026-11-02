@@ -39,8 +39,8 @@ function environment(): NodeJS.ProcessEnv {
 }
 
 /** `git commit` of what is staged, as a person runs it, from `cwd`. */
-function commit(cwd: string): { code: number | null; stdout: string; stderr: string } {
-  const result = spawnSync('git', ['commit', '-q', '-m', 'work'], { cwd, encoding: 'utf8', env: environment() });
+function commit(cwd: string, env: NodeJS.ProcessEnv = {}): { code: number | null; stdout: string; stderr: string } {
+  const result = spawnSync('git', ['commit', '-q', '-m', 'work'], { cwd, encoding: 'utf8', env: { ...environment(), ...env } });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -49,12 +49,13 @@ function commit(cwd: string): { code: number | null; stdout: string; stderr: str
  * writes, the hook with it, on the round's branch. What init wrote is on the
  * base, so a round's commit holds only what the test stages.
  */
-async function guarded(): Promise<Repository> {
+async function guarded(files: Readonly<Record<string, string>> = {}): Promise<Repository> {
   const repo = repository({
     [BRIEF_FILE]: brief({ affected: ['src/auth/**'], protected: ['src/db/**'] }),
     '.gitignore': 'node_modules/\n',
     'src/db/schema.ts': 'table;\n',
     'src/auth/a.ts': 'a;\n',
+    ...files,
   });
   installHarness(repo.root);
   const written = await cli(['init', '--git-hook', '--write'], repo.root);
@@ -210,6 +211,84 @@ describe('the pre-commit hook init writes, run by git', () => {
     repo.write('src/db/schema.ts', 'changed;\n');
     repo.git('add', 'src/db/schema.ts');
     expect(commit(join(repo.root, 'src', 'auth'))).toEqual({ code: 1, stdout: '', stderr: REFUSED });
+  });
+});
+
+describe("the round's last commit, on its own branch", () => {
+  const ARCHIVED = 'briefs/archive/001_rotate-tokens.md';
+  const HELD = 'spec-harness: the branch names brief 001, which is archived; a closed round writes nothing.';
+
+  /** The round's work, committed, and spec-brief's own archive of its brief, as step 10 of the tutorial has it: nothing committed, everything staged. */
+  async function archived(files: Readonly<Record<string, string>> = {}): Promise<Repository> {
+    const repo = await guarded(files);
+    repo.write('src/auth/a.ts', 'b;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root).code).toBe(0);
+    const script = join(ROOT, 'node_modules', '@spec-family', 'spec-brief', 'bin', 'spec-brief.js');
+    const run = spawnSync(process.execPath, [script, 'archive', '001', '--base', 'main', '--summary', 'Tokens rotate.'], { cwd: repo.root, encoding: 'utf8', env: environment() });
+    expect(run.status, run.stdout).toBe(0);
+    repo.git('add', '-A');
+    return repo;
+  }
+
+  it('takes the commit that archives the brief, and holds every commit after it', async () => {
+    const repo = await archived();
+    expect(repo.git('diff', '--cached', '--name-status')).toContain(`\t${ARCHIVED}`);
+    const before = head(repo.root);
+    expect(commit(repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });
+    expect(head(repo.root)).not.toBe(before);
+    expect(existsSync(join(repo.root, BRIEF_FILE))).toBe(false);
+
+    repo.write('src/auth/a.ts', 'c;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root)).toEqual({ code: 1, stdout: '', stderr: `${HELD} The round is archived and ends when this branch merges: write on the branch of a live brief.\n` });
+  });
+
+  it('takes the link spec-brief rewrites in a live brief with it', async () => {
+    const repo = await archived({ 'briefs/002_other.md': brief({ title: '002 - Other', status: 'draft', body: '[The tokens](001_rotate-tokens.md).' }) });
+    expect(repo.read('briefs/002_other.md')).toContain('archive/001_rotate-tokens.md');
+    expect(commit(repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('takes the move where the two files read too little alike for git to call it a rename', async () => {
+    const repo = await archived();
+    repo.write(ARCHIVED, `${repo.read(ARCHIVED)}\n${'A long summary of what the round found.\n'.repeat(200)}`);
+    repo.git('add', '-A');
+    expect(repo.git('diff', '--cached', '--name-status').split('\n').map((line) => line.charAt(0)).sort().join('')).toBe('AD');
+    expect(commit(repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('refuses the archive with anything else staged beside it', async () => {
+    const repo = await archived();
+    repo.write('src/auth/a.ts', 'c;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root)).toEqual({ code: 1, stdout: '', stderr: `${HELD} The archive is a closed round's last commit, and takes nothing else with it: unstage the rest.\n` });
+  });
+
+  it('refuses the archive where the brief is named by anything but the branch, as a brief named there is no round closing here', async () => {
+    const repo = await archived();
+    expect(commit(repo.root, { SPEC_BRIEF: '001' })).toEqual({ code: 1, stdout: '', stderr: 'spec-harness: the environment names brief 001, which is archived; a closed round writes nothing\n' });
+  });
+
+  it('holds a conflict resolved on the closed branch, a write of its own, and passes a merge that needed none', async () => {
+    const repo = await archived();
+    expect(commit(repo.root).code).toBe(0);
+    repo.git('checkout', '-q', 'main');
+    repo.write('src/auth/z.ts', 'z;\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '--no-verify', '-m', 'main moves');
+    repo.git('checkout', '-q', 'brief/001-rotate');
+    repo.git('merge', '-q', '--no-edit', 'main');
+    repo.git('checkout', '-q', 'main');
+    repo.write('src/auth/a.ts', 'main;\n');
+    repo.git('add', '-A');
+    repo.git('commit', '-q', '--no-verify', '-m', 'main moves again');
+    repo.git('checkout', '-q', 'brief/001-rotate');
+    const merge = spawnSync('git', ['merge', 'main'], { cwd: repo.root, encoding: 'utf8', env: environment() });
+    expect(merge.status).toBe(1);
+    repo.write('src/auth/a.ts', 'both;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root).stderr).toContain(HELD);
   });
 });
 

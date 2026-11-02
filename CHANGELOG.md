@@ -9,6 +9,22 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Changed
+
+- **git's hook takes the commit that archives the round's brief.** A round
+  archives on its own branch, before it merges, and the hook refused that
+  commit, a closed round's branch writing nothing, so a repository with the
+  hook could only archive after the merge, where spec-brief has no diff to
+  measure the scope by. It now takes what `spec-brief archive` left staged,
+  the brief's move and the links it rewrites in live briefs, and refuses
+  anything beside them, saying so, and every commit after it
+  ([ADR-0004](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0004-the-active-brief-is-named-not-guessed.md)).
+  Upgrading: nothing to change. A merge of the base that stops on a
+  conflict is refused on such a branch as before, so merge it before the
+  archive.
+
 ## 0.22.0
 
 The first release as `@spec-family/spec-harness`, from
