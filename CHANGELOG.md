@@ -24,6 +24,18 @@ cannot turn a run red. The family's policy is
   Upgrading: nothing to change. A merge of the base that stops on a
   conflict is refused on such a branch as before, so merge it before the
   archive.
+- **git's hook says when the work tree's `package.json` names no
+  spec-harness.** Where the script was in neither work tree, the hook said
+  to install the dependencies, as with `npm ci`, also at a commit from
+  before the project took the harness up, whose `package.json` has none to
+  install. It now says, there, that installing them brings no hook to run.
+  The commit waits either way, exit 2: a manifest that names no harness
+  does not tell such a commit from a project that installs it some other
+  way. `init --git-hook --write` writes the new hook over the one 0.22.0
+  wrote, and `doctor` and `init` note that one until then
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+  Upgrading: run `npx --no-install @spec-family/spec-harness init --git-hook
+  --write` where `init --git-hook` wrote the hook.
 
 ## 0.22.0
 

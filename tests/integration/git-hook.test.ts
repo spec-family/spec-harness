@@ -13,6 +13,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PRE_COMMIT } from '../../src/configure.js';
+import { releasedHook } from './released-hooks.js';
 import { brief, BRIEF_FILE, cleanup, cli, install, installFake, installHarness, parsed, repository, ROOT, temp, type Repository } from './helpers.js';
 
 afterAll(cleanup);
@@ -32,6 +33,12 @@ const REFUSED = [
 const NOT_INSTALLED = new RegExp(
   `^spec-harness: ${SCRIPT.replaceAll('.', '\\.')} is not in \\S.*, the work tree git commits in, nor in its repository's main work tree: install the project's dependencies there, as with npm ci, and commit again\\n$`,
 );
+/** What it says where, besides, the work tree's package.json names no spec-harness, as at a commit from before the project took it up. */
+const NOT_TAKEN_UP = new RegExp(
+  `^spec-harness: ${SCRIPT.replaceAll('.', '\\.')} is not in \\S.*, the work tree git commits in, nor in its repository's main work tree, and package.json there names no @spec-family/spec-harness: a commit from before the project took it up has no hook to run, and installing its dependencies brings none, so the commit waits\\n$`,
+);
+/** A project's package.json, which names the harness as a project that took it up does. */
+const MANIFEST = `${JSON.stringify({ devDependencies: { '@spec-family/spec-harness': '^0.23.0' } }, null, 2)}\n`;
 
 /** The hook's `node` is this Node, found first on PATH, as a person's is. */
 function environment(): NodeJS.ProcessEnv {
@@ -130,7 +137,7 @@ describe('the pre-commit hook init writes, run by git', () => {
   });
 
   it('stops the commit in a linked worktree where neither it nor the main work tree has the install', async () => {
-    const repo = repository({ [BRIEF_FILE]: brief({ affected: ['src/auth/**'], protected: ['src/db/**'] }), 'src/auth/a.ts': 'a;\n' });
+    const repo = repository({ [BRIEF_FILE]: brief({ affected: ['src/auth/**'], protected: ['src/db/**'] }), 'src/auth/a.ts': 'a;\n', 'package.json': MANIFEST });
     repo.write('.git/hooks/pre-commit', PRE_COMMIT);
     chmodSync(join(repo.root, '.git', 'hooks', 'pre-commit'), 0o755);
     const linked = join(temp(), 'linked');
@@ -199,8 +206,49 @@ describe('the pre-commit hook init writes, run by git', () => {
     const before = head(other.root);
     const stopped = commit(other.root);
     expect(stopped.code).toBe(1);
-    expect(stopped.stderr).toMatch(NOT_INSTALLED);
+    // It names no spec-harness in a package.json, so no install is advised.
+    expect(stopped.stderr).toMatch(NOT_TAKEN_UP);
     expect(head(other.root)).toBe(before);
+  });
+
+  it('says of a commit from before the project took the harness up that no install brings it, and the commit waits', async () => {
+    const repo = repository({ 'src/a.ts': 'a;\n', 'package.json': '{ "devDependencies": { "typescript": "^7.0.0" } }\n' }, null);
+    const early = head(repo.root);
+    repo.write('package.json', MANIFEST);
+    repo.commit('take up spec-harness');
+    repo.write('.git/hooks/pre-commit', PRE_COMMIT);
+    chmodSync(join(repo.root, '.git', 'hooks', 'pre-commit'), 0o755);
+    // A commit from before, checked out with no install anywhere.
+    repo.git('checkout', '-q', '-b', 'hotfix', early);
+    repo.write('src/a.ts', 'fixed;\n');
+    repo.git('add', '-A');
+    const stopped = commit(repo.root);
+    expect(stopped).toEqual({ code: 1, stdout: '', stderr: expect.stringMatching(NOT_TAKEN_UP) });
+    expect(head(repo.root)).toBe(early);
+    // The commit that took it up names it, where an install brings it.
+    repo.git('stash', '-q');
+    repo.git('checkout', '-q', 'main');
+    repo.write('src/a.ts', 'fixed;\n');
+    repo.git('add', '-A');
+    expect(commit(repo.root).stderr).toMatch(NOT_INSTALLED);
+  });
+
+  it('is written again where 0.22.0 wrote it, by init --git-hook --write, and noted by init until then', async () => {
+    const repo = await guarded();
+    repo.write('.git/hooks/pre-commit', releasedHook(SCRIPT));
+    chmodSync(join(repo.root, '.git', 'hooks', 'pre-commit'), 0o755);
+    const NOTE =
+      'it is the hook init wrote in 0.22.0, which advises installing the dependencies where the script is not there, at a commit from before the project took up @spec-family/spec-harness too, where they bring none: spec-harness init --git-hook --write writes it again';
+    const kept = parsed<{ steps: { file: string; action: string; detail: string }[] }>(await cli(['init', '--format', 'json'], repo.root)).steps;
+    expect(kept.find((step) => step.file === '.git/hooks/pre-commit')).toEqual({ file: '.git/hooks/pre-commit', action: 'keep', detail: `already runs spec-harness; ${NOTE}` });
+    expect(repo.read('.git/hooks/pre-commit')).toBe(releasedHook(SCRIPT));
+    const written = parsed<{ steps: { file: string; action: string; detail: string }[] }>(await cli(['init', '--git-hook', '--write', '--format', 'json'], repo.root)).steps;
+    expect(written.find((step) => step.file === '.git/hooks/pre-commit')).toEqual({
+      file: '.git/hooks/pre-commit',
+      action: 'update',
+      detail: 'the hook init wrote in 0.22.0, written again to say, where the script is not installed, whether package.json names @spec-family/spec-harness',
+    });
+    expect(repo.read('.git/hooks/pre-commit')).toBe(PRE_COMMIT);
   });
 
   it('runs from a hooks directory core.hooksPath names in the work tree', async () => {

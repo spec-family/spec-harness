@@ -27,6 +27,7 @@ import { arrayMatcher, GIT_HOOK_LINE, GUARD_HOOK, matchingUnder, mcpServer, merg
 import { CALLABLE_TOOLS, WRITING_TOOLS } from '../../src/hooks.js';
 import { claudeHookLine, refusal, twoValues } from '../../src/usage.js';
 import { parseOptions } from '../../src/workspace.js';
+import { releasedHook } from './released-hooks.js';
 import { brief, BRIEF_FILE, cleanup, cli, installHarness, parsed, repository, ROOT, temp, type Captured, type Repository } from './helpers.js';
 
 afterAll(cleanup);
@@ -658,8 +659,8 @@ describe('the lines 0.1.2 to 0.21.0 wrote, once the package is @spec-family/spec
   };
   const SERVER = { command: 'node', args: [`\${CLAUDE_PROJECT_DIR:-.}/${EARLIER}`, 'mcp', '--root', '${CLAUDE_PROJECT_DIR:-.}'] };
   const NAME = '@descent-vtt/spec-harness/spec-brief-plugin';
-  /** The hook 0.19.0 to 0.21.0 wrote, read in a test: as the file loads, a mutant of init's hook would stop the file, and fail no test. */
-  const hook19 = (): string => PRE_COMMIT.split(SCRIPT).join(EARLIER);
+  /** The hook 0.19.0 to 0.21.0 wrote, as their tags have it. */
+  const hook19 = (): string => releasedHook(EARLIER);
 
   /** A project on brief 001's branch with what 0.21.0's init wrote, this release installed, and the earlier package as well where `earlier`. */
   function moving(earlier: boolean, settings: unknown = SETTINGS): Repository {
