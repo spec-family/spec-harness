@@ -9,7 +9,15 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
-## Unreleased
+## 0.23.0
+
+git's pre-commit hook takes the commit that archives the round's brief on
+its own branch, which it refused, and says, where the work tree's
+`package.json` names no spec-harness, that installing the dependencies
+brings no hook to run, where it advised the install. What Claude Code's
+hook, `guard` and `check_path` decide is as in 0.22.0
+([ADR-0004](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0004-the-active-brief-is-named-not-guessed.md),
+[ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
 
 ### Changed
 
