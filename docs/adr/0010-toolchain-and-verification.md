@@ -221,6 +221,18 @@ its is gone: `round.ts`'s `'hex'`, which its comment says is counted killed
 now and then. The release's one pull request was swept before it merged, and
 ended with no undetected mutant new against main's.
 
+For 0.23.0 the sweep of 8960e5f (run 41449993320) read 97.87% over 12,248
+mutants, 97.19% with every timeout lost, in shards of 19m22s to 36m42s, and
+the `break` stays 95. It has 89 mutants more than 0.22.0's sweep (run
+41202882905, of c7c8100), in the modules git's hook took, `hooks.ts` with 53
+of them, `cli.ts` with 24 and `configure.ts` with 12, and the same 234
+survivors and 27 without coverage, mutant for mutant. The release's one pull
+request was swept twice before it merged: the first sweep found 19
+undetected mutants new against main's, 17 of them in a path of `cli.ts` that
+only a real `git commit` reached, through the built script in a process of
+its own where no mutant runs, and the second, with that path asked in
+process and the equivalent one written away, none.
+
 One runner took 69 to 130 minutes for the full sweep. Before any sharded
 sweep ran, the report of eb39599 was cut into shards the way Stryker writes
 them and put back by the merge: all 7,507 verdicts came back with their
