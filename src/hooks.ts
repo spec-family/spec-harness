@@ -372,8 +372,11 @@ export function gitResponse(decisions: readonly Decision[]): { readonly text: st
 export function stagedArchive(staged: readonly FileChange[], archived: string, live: readonly string[]): 'alone' | 'beside' | 'absent' {
   const arrived = staged.find((change) => change.path === archived && (change.status === 'A' || change.status === 'R'));
   if (arrived === undefined) return 'absent';
+  // A second file deleted beside the brief is no move of it, so the first
+  // stands for every one: of another name it is no brief, and of the name,
+  // what is left holds the other.
   const name = posix.basename(archived);
-  const left = arrived.from ?? staged.find((change) => change.status === 'D' && posix.basename(change.path) === name)?.path;
+  const left = arrived.from ?? staged.find((change) => change.status === 'D')?.path;
   if (left === undefined || posix.basename(left) !== name) return 'beside';
   const rest = staged.filter((change) => change !== arrived && change.path !== left);
   return rest.every((change) => change.status === 'M' && live.includes(change.path)) ? 'alone' : 'beside';

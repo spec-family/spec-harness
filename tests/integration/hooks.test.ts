@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -130,11 +131,12 @@ describe('hook claude', () => {
 });
 
 describe('hook git', () => {
-  async function staged(change: (r: Repository) => void): Promise<{ code: number; stdout: string; stderr: string }> {
+  async function staged(change: (r: Repository) => void, files: Readonly<Record<string, string>> = {}): Promise<{ code: number; stdout: string; stderr: string }> {
     const r = repository({
       [BRIEF_FILE]: brief({ affected: ['src/auth/**'], protected: ['src/db/**'] }),
       'src/db/schema.ts': 'table;\n',
       'src/auth/a.ts': 'a;\n',
+      ...files,
     });
     r.git('checkout', '-q', '-b', 'brief/001-x');
     change(r);
@@ -190,6 +192,58 @@ describe('hook git', () => {
     r.git('add', '-A');
     const result = await cli(['hook', 'git', '--brief', '404'], r.root);
     expect(result).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: the flag names brief 404, and spec-brief knows no such brief\n' });
+  });
+
+  describe("on the branch of a round whose brief spec-brief lists as archived", () => {
+    const ARCHIVED = 'briefs/archive/001_rotate-tokens.md';
+    const HELD = 'spec-harness: the branch names brief 001, which is archived; a closed round writes nothing.';
+    /** The move spec-brief's archive makes of brief 001, staged. */
+    const archive = (r: Repository): void => {
+      mkdirSync(join(r.root, 'briefs', 'archive'), { recursive: true });
+      r.git('mv', BRIEF_FILE, ARCHIVED);
+    };
+
+    it('takes the commit that archives it, with the links spec-brief rewrote in a live brief', async () => {
+      expect(await staged(archive)).toEqual({ code: 0, stdout: '', stderr: '' });
+      const linked = await staged(
+        (r) => {
+          archive(r);
+          r.write('briefs/002_other.md', brief({ title: '002 - Other', status: 'draft', body: '[The tokens](archive/001_rotate-tokens.md).' }));
+          r.git('add', '-A');
+        },
+        { 'briefs/002_other.md': brief({ title: '002 - Other', status: 'draft', body: '[The tokens](001_rotate-tokens.md).' }) },
+      );
+      expect(linked).toEqual({ code: 0, stdout: '', stderr: '' });
+    });
+
+    it('holds it beside anything else, an archived brief of another round among them, and says to unstage the rest', async () => {
+      const ALONE = `${HELD} The archive is a closed round's last commit, and takes nothing else with it: unstage the rest.\n`;
+      const beside = await staged((r) => {
+        archive(r);
+        r.write('src/auth/b.ts', 'x\n');
+        r.git('add', '-A');
+      });
+      expect(beside).toEqual({ code: 2, stdout: '', stderr: ALONE });
+      const frozen = await staged(
+        (r) => {
+          archive(r);
+          r.write('briefs/archive/000_old.md', brief({ title: '000 - Old', body: 'Changed.' }));
+          r.git('add', '-A');
+        },
+        { 'briefs/archive/000_old.md': brief({ title: '000 - Old' }) },
+      );
+      expect(frozen).toEqual({ code: 2, stdout: '', stderr: ALONE });
+    });
+
+    it('holds every commit after it, with the round ending when the branch merges', async () => {
+      const after = await staged((r) => {
+        archive(r);
+        r.git('commit', '-q', '--no-verify', '-m', 'Archive brief 001');
+        r.write('src/auth/a.ts', 'b;\n');
+        r.git('add', '-A');
+      });
+      expect(after).toEqual({ code: 2, stdout: '', stderr: `${HELD} The round is archived and ends when this branch merges: write on the branch of a live brief.\n` });
+    });
   });
 
   it('answers only claude and git', async () => {
