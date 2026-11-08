@@ -278,7 +278,10 @@ export function classify(spec: ProbeSpec, run: ProbeRun): Classified {
 }
 
 function judge(spec: ProbeSpec, run: ProbeRun): Classified {
-  if (run.exitCode === null) return { outcome: 'timeout', detail: `stopped after ${spec.timeout ?? 'the configured'} seconds` };
+  if (run.exitCode === null) {
+    const given = spec.timeout ?? 'the configured';
+    return { outcome: 'timeout', detail: `stopped after ${given} ${given === 1 ? 'second' : 'seconds'}` };
+  }
   if (spec.junit !== null) {
     if (run.junit === null) {
       return run.exitCode === 0

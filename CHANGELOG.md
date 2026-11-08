@@ -43,6 +43,14 @@ cannot turn a run red. The family's policy is
   ([ADR-0002](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0002-siblings-through-their-command-lines.md)).
   Upgrading: name `node_modules/@spec-family/<name>/bin/<name>.js`, or take
   the entry out and the harness runs the one installed in the project.
+- **`doctor` fails for an empty `--brief` or `--base`.** It said them in
+  its report and exited 0, so `doctor --brief "$ID"` with the variable not
+  set passed. The report is as it was; the exit is 1
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+- **The configured base is read as the remote's branch where the checkout
+  has none.** `"base": "main"` named no commit in a CI checkout that
+  fetched only `origin/main`; the base is then `remotes/origin/main`, for
+  every command. A `--base` is read as typed.
 
 ### Fixed
 
@@ -70,6 +78,15 @@ cannot turn a run red. The family's policy is
 - The development dependencies' lockfile takes the releases of `fast-uri`,
   `zod` and `qs` that `npm audit` names as fixed, and the override of
   `qs` asks for 6.17.1 or later. None is installed with the package.
+- **`doctor` says a line whose script it cannot look for**: a word a shell
+  reads, a relative path, or a name a program finds. It passed such a line
+  over as one whose script is there; it is said now, failing nothing.
+- **`init` says when the project has not installed the package** that its
+  lines, git's hook and the plugin all run, with
+  `npm install --save-dev @spec-family/spec-harness`, as an `advise` on
+  `package.json`. It wrote its lines and said nothing.
+- One second is said as "1 second", in `doctor`'s note of an entry's
+  `timeout` and in a probe's timeout, where it was "1 seconds".
 
 ### Documentation
 

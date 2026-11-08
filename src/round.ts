@@ -95,12 +95,19 @@ export async function resolveBase(workspace: Workspace, flag: string | undefined
   // Neither commit waits on the other, so git is asked for both at once, and
   // they are read in the order they were asked in before: a base that names
   // no commit is said before a HEAD that names none.
-  const [sha, head] = await Promise.all([revision(ref, workspace.root), revision('HEAD', workspace.root)]);
-  if (sha === null) return { kind: 'unresolved', reason: `"${ref}" names no commit` };
+  const [named, head] = await Promise.all([revision(ref, workspace.root), revision('HEAD', workspace.root)]);
+  // The configured base is a branch's name, and a CI checkout fetches the
+  // branch as the remote's alone, origin/main with no main: where the name
+  // reads as no commit here, the remote's branch of that name is the base,
+  // spelled as git reads it whatever a branch or a tag is called (git.ts,
+  // remoteDefault). A base given on the command line is read as typed.
+  const remote = named === null && source === 'config' ? `remotes/origin/${ref}` : null;
+  const sha = remote === null ? named : await revision(remote, workspace.root);
+  if (sha === null) return { kind: 'unresolved', reason: `"${ref}" names no commit${remote === null ? '' : `, and neither does ${remote}`}` };
   if (head === null) return { kind: 'unresolved', reason: 'HEAD names no commit: nothing is committed on this branch yet' };
   const common = await mergeBase(sha, head, workspace.root);
   if (common === null) return { kind: 'unresolved', reason: `"${ref}" and HEAD share no history` };
-  return { kind: 'resolved', ref, source, sha, mergeBase: common, head };
+  return { kind: 'resolved', ref: remote ?? ref, source, sha, mergeBase: common, head };
 }
 
 /* ----------------------------------------------------------------- rulings */
@@ -675,6 +682,9 @@ export async function diagnoseBrief(
   options: Pick<Options, 'brief'>,
   env: CliIO['env'],
 ): Promise<{ readonly id: string | null; readonly problem: string | null; readonly branch: boolean; readonly holds: boolean; readonly archived: BriefRow | null }> {
+  // doctor fails a --brief given nothing whatever this says of the branch
+  // and of what is held, and reads nothing else of them for it, so the
+  // mutants of the two are equivalent.
   if (options.brief !== undefined && isBlank(options.brief)) return { id: null, problem: emptyValue('--brief', 'brief', options.brief), branch: false, holds: false, archived: null };
   const id = namedId(workspace, options, env);
   // Neither the flag nor SPEC_BRIEF names it, so the name is the branch's,

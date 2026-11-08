@@ -38,7 +38,7 @@ function sameStrings(value: unknown, expected: readonly string[]): boolean {
  * everywhere. git's hook runs the same script, from the top of the work
  * tree, where git starts it.
  */
-const BIN = 'node_modules/@spec-family/spec-harness/bin/spec-harness.js';
+export const BIN = 'node_modules/@spec-family/spec-harness/bin/spec-harness.js';
 
 /** The package the script is in, as a project's package.json names it. */
 const PACKAGE = '@spec-family/spec-harness';
@@ -696,17 +696,28 @@ export interface ScriptPlaces {
 }
 
 /**
- * What is said of the script a line runs where it is in none of the places
- * it can name, `null` where it is in one, and `null` where that cannot be
- * told here: a relative path, which is read from wherever the session
- * stands as the hook starts, a name a program finds by itself (npx's
- * package, a command on `PATH`), and a word a shell reads before it runs
- * anything.
+ * What is said of the script a line runs: `absent` where it is in none of
+ * the places it can name, `untold` where that cannot be told here, and
+ * `null` where it is in one. It cannot be told of a word a shell reads
+ * before it runs anything, of a relative path, which is read from
+ * wherever the session stands as the hook starts, or of a name a program
+ * finds by itself (npx's package, a command on `PATH`). Each of those was
+ * passed over, as a script that is there is; it is said now, failing
+ * nothing, so that a line doctor cannot check is not read as one it did.
  */
-function absentScript(launcher: WrittenHook['launcher'], places: ScriptPlaces): string | null {
+function scriptOf(launcher: WrittenHook['launcher'], places: ScriptPlaces): { readonly state: 'absent' | 'untold'; readonly said: string } | null {
   const paths = [...new Set(places.projects.map((project) => launcher.word.split(PROJECT_DIR).join(project)))];
-  if (paths.some((path) => (launcher.shell && SHELL_READS.test(path)) || !isAbsolute(path) || places.isFile(path))) return null;
-  return paths.length === 1 ? `the script it runs, ${paths[0]}, is not there` : `the script it runs is in neither place \${CLAUDE_PROJECT_DIR} can name, ${paths.join(' or ')}`;
+  const word = launcher.word;
+  if (paths.some((path) => launcher.shell && SHELL_READS.test(path))) {
+    return { state: 'untold', said: `it runs ${word}, which a shell reads before the hook starts, so whether its script is there cannot be told here: written with "args", as init writes it, each word is looked for as it stands` };
+  }
+  if (paths.some((path) => !isAbsolute(path))) {
+    // A package's name, scoped or not, is a name, whatever separator it holds.
+    const how = word.startsWith('@') || !/[\\/]/.test(word) ? 'a name the program before it finds by itself' : 'a path read from wherever the session stands as the hook starts';
+    return { state: 'untold', said: `it runs ${word}, ${how}, so whether its script is there cannot be told here: name it from \${CLAUDE_PROJECT_DIR}, as init writes it` };
+  }
+  if (paths.some((path) => places.isFile(path))) return null;
+  return { state: 'absent', said: paths.length === 1 ? `the script it runs, ${paths[0]}, is not there` : `the script it runs is in neither place \${CLAUDE_PROJECT_DIR} can name, ${paths.join(' or ')}` };
 }
 
 /** An entry that runs the harness: its line, where it stands, and what decides whether Claude Code starts it there. */
@@ -846,7 +857,8 @@ function describeOnFailure(where: string, blocks: boolean): string | null {
 function describeTimeout(where: string, entries: readonly HarnessEntry[]): string | null {
   const short = entries.flatMap((entry) => {
     const seconds = entry.hook['timeout'];
-    return typeof seconds === 'number' && seconds * 1000 < HOOK_BUDGET_MS ? [`${seconds} seconds under ${entry.event}`] : [];
+    // One second is said as a sentence says it, and every other count as seconds.
+    return typeof seconds === 'number' && seconds * 1000 < HOOK_BUDGET_MS ? [`${seconds} ${seconds === 1 ? 'second' : 'seconds'} under ${entry.event}`] : [];
   });
   if (short.length === 0) return null;
   return `${where} gives the hook ${named(short)}, less than the ${HOOK_BUDGET_MS / 1000} a run of it is given, so Claude Code cancels a run that takes longer before it answers, and a write it would have held goes ahead: give the entry 60, as init writes it, or no timeout`;
@@ -1082,12 +1094,17 @@ export function reportHooks(
       // init asks of no script, and says it of a line it leaves, which is a
       // person's, and of none it rewrites.
       const moved = earlier === null || (scripts === null && rewrites) ? null : `${where} runs ${hook.launcher.word}, the script of @descent-vtt/spec-harness, the name of this package's releases up to 0.21.0: it guards while that package is installed, and once it is uninstalled the hook cannot start and Claude Code lets each write go ahead without it; ${earlier}`;
-      const guards = (detail: string | null): HookReport => ({
-        ...written,
-        state: 'guards',
-        detail: detail === null ? moved : moved === null ? detail : `${detail}; ${moved}`,
-        note: note ?? (onFailureHere ? adviseOnFailure(where, own) : null),
-      });
+      // Whatever the hook would do with the words, it never reads them where
+      // its script is not there (below). And where doctor cannot look for
+      // the script, it says so: a line it reads as guarding is then one
+      // whose script it did not see.
+      const located = scripts === null ? null : scriptOf(hook.launcher, scripts);
+      const absent = located?.state === 'absent' ? located.said : null;
+      const untold = located?.state === 'untold' ? `${where}: ${located.said}` : null;
+      const guards = (detail: string | null): HookReport => {
+        const said = [detail, moved, untold].filter((part): part is string => part !== null);
+        return { ...written, state: 'guards', detail: said.length === 0 ? null : said.join('; '), note: note ?? (onFailureHere ? adviseOnFailure(where, own) : null) };
+      };
       if (hook.untyped !== null) {
         const detail = `${where} stands on an entry with ${hook.untyped}, where Claude Code's hooks reference has "type": "command" on an entry it runs as a command, so whether Claude Code runs it cannot be told here: give the entry "type": "command"`;
         return [{ ...written, state: 'unknown', detail, note }];
@@ -1105,7 +1122,6 @@ export function reportHooks(
       // fails, read 2026-10-24) a command hook that cannot start, as where
       // its script does not exist, has failed, and the action goes ahead
       // unless the entry sets onFailure to "block", which holds it.
-      const absent = scripts === null ? null : absentScript(hook.launcher, scripts);
       if (absent !== null) {
         if (!waited && !isStarted(after)) return [unstarted];
         const mend = earlier ?? 'install spec-harness in the project, npm install --save-dev @spec-family/spec-harness, or name its script where it is';

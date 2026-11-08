@@ -257,6 +257,8 @@ describe('one run, against what the probe declares', () => {
   it('is a timeout when the command was stopped', () => {
     expect(classify(SPEC, { exitCode: null, output: 'expected 401', junit: null })).toEqual({ outcome: 'timeout', detail: 'stopped after 30 seconds', output: 'expected 401' });
     expect(classify({ ...SPEC, timeout: null }, { exitCode: null, output: '', junit: null }).detail).toBe('stopped after the configured seconds');
+    // One second is said as a sentence says it.
+    expect(classify({ ...SPEC, timeout: 1 }, { exitCode: null, output: '', junit: null }).detail).toBe('stopped after 1 second');
   });
 
   it('is red when the report shows the declared test failing', () => {

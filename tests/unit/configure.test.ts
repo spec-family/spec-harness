@@ -1445,16 +1445,32 @@ describe("the lines of Claude Code's hook in its settings, and what doctor says 
       expect(at(looked([], [PROJECT, MAIN]), settings({ ...HOOK, args: ['/opt/tools/spec-harness.js', 'hook', 'claude'] }))[0]).toMatchObject({ detail: off('/opt/tools/spec-harness.js') });
     });
 
-    it('says nothing of a script whose place it cannot tell: a relative path, a name a program finds, a word a shell reads', () => {
-      for (const hook of [
-        { ...HOOK, args: ['node_modules/@spec-family/spec-harness/bin/spec-harness.js', 'hook', 'claude'] },
-        { type: 'command', command: 'npx', args: ['--no-install', '@spec-family/spec-harness', 'hook', 'claude'] },
-        shell(LEGACY),
-        shell(`node "${SCRIPT}" hook claude`),
-        shell(`node ${PROJECT}/node_modules/*/spec-harness/bin/spec-harness.js hook claude`),
-      ]) {
-        expect(at(looked([]), settings(hook))[0], JSON.stringify(hook)).toMatchObject({ state: 'guards', detail: null });
+    it('says it cannot tell where the script of a line is, of a relative path, a name a program finds and a word a shell reads, and fails nothing for it', () => {
+      const where = '"hook claude" in .claude/settings.json';
+      const cannot = 'so whether its script is there cannot be told here';
+      const path = (word: string) => `${where}: it runs ${word}, a path read from wherever the session stands as the hook starts, ${cannot}: name it from \${CLAUDE_PROJECT_DIR}, as init writes it`;
+      const name = (word: string) => `${where}: it runs ${word}, a name the program before it finds by itself, ${cannot}: name it from \${CLAUDE_PROJECT_DIR}, as init writes it`;
+      const shells = (word: string) => `${where}: it runs ${word}, which a shell reads before the hook starts, ${cannot}: written with "args", as init writes it, each word is looked for as it stands`;
+      for (const [hook, detail] of [
+        [{ ...HOOK, args: ['node_modules/@spec-family/spec-harness/bin/spec-harness.js', 'hook', 'claude'] }, path('node_modules/@spec-family/spec-harness/bin/spec-harness.js')],
+        [{ ...HOOK, args: ['./bin\\spec-harness.js', 'hook', 'claude'] }, path('./bin\\spec-harness.js')],
+        [{ type: 'command', command: 'npx', args: ['--no-install', '@spec-family/spec-harness', 'hook', 'claude'] }, name('@spec-family/spec-harness')],
+        [shell(LEGACY), name('spec-harness')],
+        [shell(`node "${SCRIPT}" hook claude`), shells(`"${SCRIPT}"`)],
+        [shell(`node ${PROJECT}/node_modules/*/spec-harness/bin/spec-harness.js hook claude`), shells(`${PROJECT}/node_modules/*/spec-harness/bin/spec-harness.js`)],
+      ] as const) {
+        expect(at(looked([]), settings(hook))[0], JSON.stringify(hook)).toMatchObject({ state: 'guards', detail });
       }
+      // Beside what else is said of the line, after it.
+      expect(at(looked([]), settings({ ...HOOK, args: ['spec-harness.js', 'hook', 'claude', '--base', 'main'] }))[0]).toMatchObject({
+        state: 'guards',
+        detail: `${where.replace('hook claude', 'hook claude --base main')} is more than init writes, and guards: the hook reads the line; ${name('spec-harness.js').replace('hook claude', 'hook claude --base main')}`,
+      });
+      // Of the places ${CLAUDE_PROJECT_DIR} can name, one that a shell would read, as a path with a space, or one read from where the session stands, is enough.
+      expect(at(looked([], [PROJECT, '/the other/project']), settings(shell(`node ${SCRIPT} hook claude`)))[0]).toMatchObject({ state: 'guards', detail: shells(SCRIPT) });
+      expect(at(looked([], [PROJECT, 'the/project']), settings({ ...HOOK, args: [SCRIPT, 'hook', 'claude'] }))[0]).toMatchObject({ state: 'guards', detail: path(SCRIPT) });
+      // Where nothing gives the places to look in, as for init, nothing is said.
+      expect(reportHooks([{ file: FILE, settings: settings({ ...HOOK, args: ['spec-harness.js', 'hook', 'claude'] }) }], PROJECT, read)[0]).toMatchObject({ state: 'guards', detail: null });
     });
   });
 
@@ -1473,6 +1489,9 @@ describe("the lines of Claude Code's hook in its settings, and what doctor says 
       '"hook claude" in .claude/settings.json gives the hook 10 seconds under PreToolUse and 10 seconds under PostToolUse, less than the 45 a run of it is given, so Claude Code cancels a run that takes longer before it answers, and a write it would have held goes ahead: give the entry 60, as init writes it, or no timeout',
     );
     expect(short(44.5)).toContain('gives the hook 44.5 seconds under PreToolUse and 44.5 seconds under PostToolUse, less than the 45');
+    // One second is said as a sentence says it.
+    expect(short(1)).toContain('gives the hook 1 second under PreToolUse and 1 second under PostToolUse, less than the 45');
+    expect(short(0)).toContain('gives the hook 0 seconds under PreToolUse');
     // As much as a run is given, more, none at all, or one that is no number: nothing to say.
     for (const timeout of [45, 60, 600, undefined, '10', null]) expect(short(timeout), String(timeout)).toBeNull();
     // Each entry of the line is read: one under PreToolUse alone is named alone.
@@ -2675,7 +2694,12 @@ describe("the lines 0.21.0 and earlier wrote, with the script of the scope the f
       });
       // A Windows path, which the earlier script ends just as well, and is no line a release wrote.
       const windows = `C:\\p\\node_modules\\@descent-vtt\\spec-harness\\bin\\spec-harness.js`;
-      expect(at(both({ ...OLD, args: [windows, 'hook', 'claude'] }), looked([windows]))[0]).toMatchObject({ state: 'guards', detail: `${runs(W, windows)}; ${BY_HAND}` });
+      // Absolute where Windows reads it, and looked for; elsewhere a path from where the session stands, which is said as one that cannot be.
+      const untold = `${W}: it runs ${windows}, a path read from wherever the session stands as the hook starts, so whether its script is there cannot be told here: name it from \${CLAUDE_PROJECT_DIR}, as init writes it`;
+      expect(at(both({ ...OLD, args: [windows, 'hook', 'claude'] }), looked([windows]))[0]).toMatchObject({
+        state: 'guards',
+        detail: process.platform === 'win32' ? `${runs(W, windows)}; ${BY_HAND}` : `${runs(W, windows)}; ${BY_HAND}; ${untold}`,
+      });
     });
 
     it('says, where nothing is looked for, as init reads it, nothing of a line init rewrites and how to move one it leaves', () => {
