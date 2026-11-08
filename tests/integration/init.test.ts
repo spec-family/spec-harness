@@ -8,7 +8,7 @@ import { GUARD_HOOK, mcpServer, mergeMcp, PLUGIN, PRE_COMMIT, PROJECT_DIR_OR_HER
 import { stateDirectory, StateError } from '../../src/fs.js';
 import { claudeCodeWiring, claudeSettingsFiles, pluginDirectories } from '../../src/round.js';
 import { gitHook, NOT_INSTALLED } from '../../src/setup.js';
-import { brief, BRIEF_FILE, claudeOf, cleanup, cli, install, installFake, installHarness, installPlugin, parsed, repository, siblings, temp, write, type Repository } from './helpers.js';
+import { brief, BRIEF_FILE, claudeOf, cleanup, cli, git, install, installFake, installHarness, installPlugin, parsed, repository, siblings, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -123,6 +123,13 @@ describe('init', () => {
     expect(note(await plan(tree, '--git-hook'))).toEqual([]);
     rmSync(join(repo.root, 'node_modules', '@spec-family', 'spec-harness'), { recursive: true });
     expect(note(await plan(tree))).toEqual([{ file: 'package.json', action: 'advise', detail: NOT_INSTALLED }]);
+    // A repository that keeps its git directory apart names no main work tree: its own is the one place.
+    const apart = temp();
+    git(apart, 'init', '-q', '-b', 'main', `--separate-git-dir=${join(temp(), 'kept.git')}`);
+    install(apart, 'spec-brief');
+    expect(note(await plan(apart))).toEqual([{ file: 'package.json', action: 'advise', detail: NOT_INSTALLED }]);
+    installHarness(apart);
+    expect(note(await plan(apart))).toEqual([]);
   });
 
   it('writes onFailure "block" on its own entries only when asked, onto entries a run before wrote too, and never onto a person\'s', async () => {

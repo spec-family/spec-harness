@@ -484,7 +484,8 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
   // every commit (ADR-0012). Said where the script is in neither place a
   // line can name: this work tree, and a linked worktree's main one.
   const main = mainWorkTree(workspace.commonDir);
-  if (![root, ...(main === null ? [] : [main])].some((place) => isFile(join(place, BIN)))) {
+  const places = main === null ? [root] : [root, main];
+  if (!places.some((place) => isFile(join(place, BIN)))) {
     steps.push({ file: 'package.json', action: 'advise', detail: NOT_INSTALLED });
   }
 

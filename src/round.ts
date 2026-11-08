@@ -645,6 +645,9 @@ export async function diagnoseBrief(
   options: Pick<Options, 'brief'>,
   env: CliIO['env'],
 ): Promise<{ readonly id: string | null; readonly problem: string | null; readonly branch: boolean; readonly holds: boolean; readonly archived: BriefRow | null }> {
+  // doctor fails a --brief given nothing whatever this says of the branch
+  // and of what is held, and reads nothing else of them for it, so the
+  // mutants of the two are equivalent.
   if (options.brief !== undefined && isBlank(options.brief)) return { id: null, problem: emptyValue('--brief', 'brief', options.brief), branch: false, holds: false, archived: null };
   const id = namedId(workspace, options, env);
   // Neither the flag nor SPEC_BRIEF names it, so the name is the branch's,
