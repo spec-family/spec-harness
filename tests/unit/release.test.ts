@@ -77,29 +77,31 @@ describe('the plugin beside the package', () => {
   const plugin = (version: unknown): unknown => ({ name: 'spec-harness', version });
   const marketplace = (...plugins: unknown[]): unknown => ({ name: 'spec-tools', plugins });
 
-  it('passes when both manifests name the package version', () => {
-    expect(pluginDrift('0.1.0', plugin('0.1.0'), marketplace({ name: 'other', version: '9.9.9' }, { name: 'spec-harness', version: '0.1.0' }))).toBeNull();
+  const drifted = (named: string, version: string): string => `.claude-plugin/plugin.json names ${named}, where package.json names ${version}: the plugin is released with the package, at its version`;
+  const ownVersion =
+    "the spec-harness plugin in .claude-plugin/marketplace.json names a version of its own: Claude Code reads .claude-plugin/plugin.json's before it, and claude plugin validate warns where both name one, so take it out";
+  const unlisted = '.claude-plugin/marketplace.json lists no spec-harness plugin';
+
+  it('passes when the manifest names the package version and the marketplace lists the plugin with none', () => {
+    expect(pluginDrift('0.1.0', plugin('0.1.0'), marketplace({ name: 'other', version: '9.9.9' }, { name: 'spec-harness', source: './' }))).toBeNull();
   });
 
-  it('names each manifest that says another version, and the one the package says', () => {
-    expect(pluginDrift('0.2.0', plugin('0.1.0'), marketplace({ name: 'spec-harness', version: '0.2.0' }))).toBe(
-      '.claude-plugin/plugin.json names 0.1.0, where package.json names 0.2.0: the plugin is released with the package, at its version',
-    );
-    expect(pluginDrift('0.2.0', plugin('0.2.0'), marketplace({ name: 'spec-harness', version: '0.1.0' }))).toBe(
-      'the spec-harness plugin in .claude-plugin/marketplace.json names 0.1.0, where package.json names 0.2.0: the plugin is released with the package, at its version',
-    );
-    expect(pluginDrift('0.2.0', plugin('0.1.0'), marketplace({ name: 'spec-harness', version: '0.1.0' }))).toBe(
-      '.claude-plugin/plugin.json names 0.1.0, and the spec-harness plugin in .claude-plugin/marketplace.json names 0.1.0, where package.json names 0.2.0: the plugin is released with the package, at its version',
-    );
+  it('names a manifest that says another version, and the one the package says', () => {
+    expect(pluginDrift('0.2.0', plugin('0.1.0'), marketplace({ name: 'spec-harness' }))).toBe(drifted('0.1.0', '0.2.0'));
   });
 
-  it('counts a manifest without a version, or without the plugin, as drift', () => {
-    const none = 'names no version';
-    expect(pluginDrift('0.1.0', { name: 'spec-harness' }, marketplace({ name: 'spec-harness', version: '0.1.0' }))).toContain(`plugin.json ${none}`);
-    expect(pluginDrift('0.1.0', plugin(1), marketplace({ name: 'spec-harness', version: '0.1.0' }))).toContain(`plugin.json ${none}`);
-    expect(pluginDrift('0.1.0', plugin('0.1.0'), marketplace({ name: 'spec-brief', version: '0.1.0' }))).toContain(`marketplace.json ${none}`);
-    expect(pluginDrift('0.1.0', plugin('0.1.0'), { plugins: 'spec-harness' })).toContain(`marketplace.json ${none}`);
-    expect(pluginDrift('0.1.0', plugin('0.1.0'), marketplace('spec-harness'))).toContain(`marketplace.json ${none}`);
-    expect(pluginDrift('0.1.0', [], null)).toContain(`plugin.json ${none}, and`);
+  it('counts a version on the marketplace entry, whatever it is, and an entry missing, as drift beside the manifest', () => {
+    expect(pluginDrift('0.2.0', plugin('0.2.0'), marketplace({ name: 'spec-harness', version: '0.2.0' }))).toBe(ownVersion);
+    expect(pluginDrift('0.2.0', plugin('0.2.0'), marketplace({ name: 'spec-harness', version: null }))).toBe(ownVersion);
+    expect(pluginDrift('0.2.0', plugin('0.1.0'), marketplace({ name: 'spec-harness', version: '0.1.0' }))).toBe(`${drifted('0.1.0', '0.2.0')}; ${ownVersion}`);
+    expect(pluginDrift('0.1.0', plugin('0.1.0'), marketplace({ name: 'spec-brief' }))).toBe(unlisted);
+    expect(pluginDrift('0.1.0', plugin('0.1.0'), { plugins: 'spec-harness' })).toBe(unlisted);
+    expect(pluginDrift('0.1.0', plugin('0.1.0'), marketplace('spec-harness'))).toBe(unlisted);
+  });
+
+  it('counts a manifest without a version as drift', () => {
+    expect(pluginDrift('0.1.0', { name: 'spec-harness' }, marketplace({ name: 'spec-harness' }))).toBe(drifted('no version', '0.1.0'));
+    expect(pluginDrift('0.1.0', plugin(1), marketplace({ name: 'spec-harness' }))).toBe(drifted('no version', '0.1.0'));
+    expect(pluginDrift('0.1.0', [], null)).toBe(`${drifted('no version', '0.1.0')}; ${unlisted}`);
   });
 });

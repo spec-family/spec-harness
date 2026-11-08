@@ -459,6 +459,28 @@ describe('the siblings', () => {
     return ['node', join(directory, 'sibling.js')];
   }
 
+  it('says a command "tools" names that runs a script of the earlier scope, and fails where the script is gone', async () => {
+    const script = 'node_modules/@descent-vtt/spec-guard/bin/spec-guard.js';
+    const repo = repository({ [BRIEF_FILE]: brief(), [script]: '' }, { tools: { 'spec-brief': ['node', SPEC_BRIEF], 'spec-guard': ['node', script] } });
+    const note = `"tools.spec-guard" in .spec-harness.json runs ${script}, a script of @descent-vtt/spec-guard, the family's name until 2026-10-26,`;
+    const there = await cli(['doctor', '--format', 'json'], repo.root);
+    expect(there.code).toBe(0);
+    expect(parsed<{ siblings: { tool: string }[] }>(there).siblings.find((sibling) => sibling.tool === 'spec-guard')).toEqual({
+      tool: 'spec-guard',
+      state: 'found',
+      minimum: expect.any(String),
+      version: null,
+      elsewhere: null,
+      detail: `node ${script} (named in .spec-harness.json; its version is not checked); ${note} which runs while that package is installed, and not once it is uninstalled: name node_modules/@spec-family/spec-guard/bin/spec-guard.js in its place, or take the entry out and the harness runs the one installed in the project`,
+    });
+    rmSync(join(repo.root, script));
+    const gone = await cli(['doctor'], repo.root);
+    expect(gone.code).toBe(1);
+    expect(gone.stdout).toContain(`found     spec-guard  node ${script} (named in .spec-harness.json; its version is not checked); ${note} which is not there, so the harness cannot run it:`);
+    // A command of another path is not read for the scope, and fails nothing.
+    expect((await cli(['doctor'], repository({ [BRIEF_FILE]: brief() }).root)).code).toBe(0);
+  });
+
   it('reports which siblings it found, and fails only when it found none', async () => {
     const repo = repository({ [BRIEF_FILE]: brief() });
     repo.git('checkout', '-q', '-b', 'brief/001-x');

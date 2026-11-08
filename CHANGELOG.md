@@ -11,6 +11,46 @@ cannot turn a run red. The family's policy is
 
 ## Unreleased
 
+### Changed
+
+- **`doctor` reads a command `tools` names for the earlier scope's
+  script.** A command in `.spec-harness.json` that runs
+  `node_modules/@descent-vtt/<name>/...`, the family's name until
+  2026-10-26, runs while that package is installed and not once it is
+  uninstalled, and `doctor` said nothing of it, its version not being
+  checked. It now says so on the sibling's row, with what to name in its
+  place, and exits 1 where the script is not there
+  ([ADR-0002](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0002-siblings-through-their-command-lines.md)).
+  Upgrading: name `node_modules/@spec-family/<name>/bin/<name>.js`, or take
+  the entry out and the harness runs the one installed in the project.
+
+### Fixed
+
+- **`init --write` moves spec-brief's `$schema`.** Where
+  `.spec-brief.json` names the schema where spec-brief's `init` wrote it
+  before the move, `./node_modules/@descent-vtt/spec-brief/schema.json` or
+  the file on the earlier repository's main, `init` names
+  `./node_modules/@spec-family/spec-brief/schema.json` in its place, as it
+  names the spec-brief plugin by its name now. An editor read neither once
+  that package was uninstalled
+  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md)).
+- **`audit`'s hint where spec-brief's configuration names the plugin by
+  its earlier name.** For a protected file a signed ruling allows and the
+  archive refused, `audit` advised adding
+  `@spec-family/spec-harness/spec-brief-plugin` to `plugins` where the
+  configuration named `@descent-vtt/spec-harness/spec-brief-plugin`, which
+  spec-brief loads from the earlier package, and beside which it refuses a
+  second plugin of the same name. It now says the configuration names the
+  earlier name, and that `init --write` names the plugin in its place.
+- **The plugin's version is written once, in `.claude-plugin/plugin.json`.**
+  The marketplace entry named it too, which Claude Code reads after the
+  manifest's and `claude plugin validate` warns of; the entry names none
+  now, and the release check holds it so
+  ([ADR-0011](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0011-releases-are-staged-by-ci.md)).
+- The development dependencies' lockfile takes the releases of `fast-uri`,
+  `zod` and `qs` that `npm audit` names as fixed, and the override of
+  `qs` asks for 6.17.1 or later. None is installed with the package.
+
 ### Documentation
 
 - **What a ruling proves.** The README's section on rulings and ADR-0006

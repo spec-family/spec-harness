@@ -590,6 +590,32 @@ ahead, where `init` writing a line once and never again had been safe.
   beside the new ones, as data, and runs the rewritten entries as Claude
   Code starts them.
 
+*Amended 2026-11-08.* **Two more names the earlier scope left: spec-brief's
+schema and the spec-brief plugin in `audit`'s hint.**
+
+- **`init --write` moves `$schema` in spec-brief's configuration**, where
+  it names a place spec-brief's `init` wrote before the move: the copy in
+  the earlier package, `./node_modules/@descent-vtt/spec-brief/schema.json`,
+  which spec-brief's `init` wrote from its release of 2026-09-26 on, and the
+  file on the earlier repository's main before that. Neither is there for a
+  project that installs `@spec-family/spec-brief`, so an editor checks the
+  file by no schema. It is written as
+  `./node_modules/@spec-family/spec-brief/schema.json`, what spec-brief's
+  `init` writes now, where it stands in the file, in the same `update` as
+  the plugin's name, and said in it. A schema anywhere else is a person's,
+  and left. `doctor` says nothing of it: nothing it checks reads the key.
+- **`audit` says the plugin's earlier name where the configuration names
+  it so.** For a protected file a verified ruling allows, which the
+  archive refused, `audit` advised adding the plugin by its name now
+  wherever the configuration did not load it by that name. Beside the
+  earlier name, which spec-brief loads from the earlier package while that
+  is installed, that is a second plugin of one name, which spec-brief
+  refuses. Where the configuration names the plugin by the earlier name
+  alone, which `doctor` reports as `earlier`, the hint says so and that
+  `init --write` names it in its place. `AuditInput` has
+  `pluginNamedEarlier` for it, optional, so a caller of the library that
+  does not give it reads the hint as before.
+
 ## Consequences
 
 - A plugin turned on by managed settings or `--settings` is invisible to

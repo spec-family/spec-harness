@@ -21,9 +21,9 @@
 import { SiblingOutputError, type ActiveBrief } from './briefs.js';
 import { CONFIG_FILE, ConfigError, SIBLINGS, SPEC_BRIEF_CONFIGS } from './config.js';
 import type { ClaudeCodeWiring } from './configure.js';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
-import { gitDirectories, isDirectory, keepCall, loadConfig, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
+import { gitDirectories, isDirectory, isFile, keepCall, loadConfig, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
 import { changedPaths, GitError, holdsPath, isShallow, show, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
@@ -663,13 +663,17 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // What doctor alone runs of them, loaded before anything is asked: the
   // five things below are asked at once, and none waits on a module.
   const [configure, round, setup, signing] = await Promise.all([import('./configure.js'), import('./round.js'), import('./setup.js'), import('./signers.js')]);
-  const { describeBase, describeClaudeCode, describeClaudeRelease, describeGitHook, describeHooksOff, describeInstalls, describePlugin, describePresence, describeSignerKeys, describeSignerProblem, describeSigners, guardSwitchedOff, guardWired, NO_SESSION_START, NO_TURN_END, wiringState } = configure;
+  const { describeBase, describeClaudeCode, describeClaudeRelease, describeGitHook, describeHooksOff, describeInstalls, describePlugin, describePresence, describeSignerKeys, describeSignerProblem, describeSigners, earlierTool, guardSwitchedOff, guardWired, NO_SESSION_START, NO_TURN_END, wiringState } = configure;
   const { diagnoseBrief, specBriefPlugin } = round;
   const { gitHook } = setup;
   const { notFido2, readAllowedSigners } = signing;
   // The siblings as git's hook finds them in this work tree: its own
   // install, and in a linked worktree with none the main work tree's.
   const workspace = await openWorkspace(options, io, MAIN_INSTALL);
+  // A command `tools` names that runs a script of the earlier scope's
+  // install runs while that package is installed, and fails doctor where
+  // the script is not there, as a hook's line whose script is gone does.
+  const gone: string[] = [];
   const rows = SIBLINGS.map((name) => {
     const sibling = workspace.siblings.locate(name);
     const row = { tool: name, state: sibling.kind, minimum: MINIMUM_VERSIONS[name] };
@@ -678,8 +682,11 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
     const whose = elsewhere === null ? '' : `, the install of ${elsewhere}: this work tree has none of its own`;
     if (sibling.kind === 'outdated') return { ...row, version: sibling.version, elsewhere, detail: `${sibling.reason}${whose}` };
     const command = sibling.command.join(' ');
-    const detail = sibling.version === null ? `${command} (named in .spec-harness.json; its version is not checked)` : `${command} (${sibling.version}${whose})`;
-    return { ...row, version: sibling.version, elsewhere, detail };
+    if (sibling.version !== null) return { ...row, version: sibling.version, elsewhere, detail: `${command} (${sibling.version}${whose})` };
+    const earlier = earlierTool(name, sibling.command, (path) => isFile(resolve(workspace.root, path)));
+    if (earlier?.gone === true) gone.push(name);
+    const named = `${command} (named in .spec-harness.json; its version is not checked)`;
+    return { ...row, version: null, elsewhere, detail: earlier === null ? named : `${named}; ${earlier.detail}` };
   });
   const signersFile = workspace.config.rulings.allowedSigners;
   // Five things that wait on the work tree and on nothing of one another,
@@ -810,7 +817,8 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
     for (const row of rows) io.stdout.write(`${row.state.padEnd(8)}  ${row.tool.padEnd(10)}  ${row.detail}\n`);
   }
   // An outdated sibling is a problem to fix, where a missing optional one is
-  // a choice; with none installed, the harness can check nothing. A double
+  // a choice; with none installed, the harness can check nothing; and so is
+  // a command `tools` names whose script of the earlier scope is gone. A double
   // install is a problem too, where no Claude Code wiring at all is a choice,
   // and so are a hook whose own line turns the guard off or holds every
   // write, or whose script is not there, a branch that names a brief no round
@@ -839,7 +847,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   const untold =
     options.strict &&
     (release?.state === 'unknown' || wiring.lines.some((line) => line.state === 'unknown') || wiring.presence?.state === 'unknown' || (hook.state === 'unreadable' && hook.runs) || hook.state === 'unknown');
-  return outdated || !usable || claude === 'both' || off || unworkable || named.holds || switchedOff || missing || tooOld || stopped || untold ? EXIT_FAILED : EXIT_OK;
+  return outdated || !usable || gone.length > 0 || claude === 'both' || off || unworkable || named.holds || switchedOff || missing || tooOld || stopped || untold ? EXIT_FAILED : EXIT_OK;
 }
 
 /* ---------------------------------------------------------------- dispatch */
