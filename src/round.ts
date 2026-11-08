@@ -13,7 +13,7 @@
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { readdir, readFile, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readArchivePlan, readGuardRun } from './answers.js';
@@ -34,7 +34,12 @@ import {
   matchingUnder,
   patternReader,
   pluginMarketplace,
+  onCiRunner,
+  PLUGIN_SCRIPT,
+  PROJECT_DIR,
   pluginPresence,
+  projectScripts,
+  type PluginScript,
   PROJECT_SETTINGS,
   readsOnFailure,
   registersServer,
@@ -453,16 +458,40 @@ export function pluginDirectories(env: CliIO['env'], platform: NodeJS.Platform =
  * hosted on claude.ai stands beside it (the plugin loading reference, Find
  * plugins on disk, ADR-0012). Nothing else there is read.
  */
-async function pluginsRoot(directory: string, marketplace: string): Promise<PluginsRoot> {
-  const versions = join(directory, 'cache', marketplace, 'spec-harness');
-  let cached = false;
+async function pluginsRoot(directory: string, marketplace: string): Promise<PluginsRoot & { readonly versions: readonly string[] }> {
+  const versions = await cachedVersions(join(directory, 'cache', marketplace, 'spec-harness'));
+  return { directory, cached: versions.length > 0, versions, registry: await readJsonObject(join(directory, MARKETPLACE_REGISTRY)), hosted: existsSync(join(directory, HOSTED_REGISTRY)) };
+}
+
+/** The directories of a cache's versions of the plugin, under `plugin`, that no `.orphaned_at` marks as left behind. */
+async function cachedVersions(plugin: string): Promise<string[]> {
   try {
-    const entries = await readdir(versions, { withFileTypes: true });
-    cached = entries.some((entry) => entry.isDirectory() && !existsSync(join(versions, entry.name, '.orphaned_at')));
+    const entries = await readdir(plugin, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory() && !existsSync(join(plugin, entry.name, '.orphaned_at'))).map((entry) => join(plugin, entry.name));
   } catch {
     // No directory for the plugin in this cache: it holds no version of it.
+    return [];
   }
-  return { directory, cached, registry: await readJsonObject(join(directory, MARKETPLACE_REGISTRY)), hosted: existsSync(join(directory, HOSTED_REGISTRY)) };
+}
+
+/**
+ * What the plugin's hooks and server run from the project, read from each
+ * version a cache holds, `hooks/hooks.json` and `.mcp.json`, the files
+ * Claude Code loads them from; each is there where it is a file in one of
+ * `places`, where `${CLAUDE_PROJECT_DIR}` can point. Where no version is
+ * there to read, or none names a script, the plugin is the one a
+ * relative path loads, or cannot be told to be here, and the script is the
+ * one every release under `@spec-family` runs.
+ */
+async function pluginScripts(versions: readonly string[], places: readonly string[]): Promise<PluginScript[]> {
+  const there = (script: string): boolean => places.some((place) => isFile(script.split(PROJECT_DIR).join(place)));
+  const read: PluginScript[] = [];
+  for (const version of versions) {
+    for (const file of [join(version, 'hooks', 'hooks.json'), join(version, '.mcp.json')]) {
+      for (const script of projectScripts(await readJsonObject(file))) read.push({ script, file, there: there(script) });
+    }
+  }
+  return read.length > 0 ? read : [{ script: PLUGIN_SCRIPT, file: null, there: there(PLUGIN_SCRIPT) }];
 }
 
 /**
@@ -535,7 +564,11 @@ export async function claudeCodeWiring(root: string, io: CliIO, pattern: Pattern
   // equivalent to its mutant.
   const marketplace = plugin === null ? null : pluginMarketplace(plugin.id);
   const roots = marketplace === null ? [] : await Promise.all(pluginDirectories(io.env).map((directory) => pluginsRoot(directory, marketplace)));
-  const presence = plugin === null ? null : pluginPresence(plugin, sources, roots);
+  const presence = plugin === null ? null : pluginPresence(plugin, sources, roots, onCiRunner(io.env));
+  const versions = roots.flatMap((root) => root.versions);
+  // A plugin that is not on this machine, or on a runner where no session
+  // runs, starts nothing: what it would run is read only where it may.
+  const scripts = places === null || presence === null || presence.state === 'absent' || presence.state === 'unchecked' ? null : await pluginScripts(versions, places);
   const server = registersServer(await readJsonObject(join(root, '.mcp.json')));
   // A line under SessionStart is the hook's by the hook's own reading of it, as any line is.
   // A root on it that is no directory is a line of the hook that is off, and
@@ -552,7 +585,7 @@ export async function claudeCodeWiring(root: string, io: CliIO, pattern: Pattern
     // one's way: it is said, and the file is not counted for it.
     const hooks = sources.map(({ file }) => file).filter((file) => lines.some((line) => line.file === file && (isStarted(line.before) || isStarted(line.after))));
     // In the order a document has them, which a script may compare by the byte.
-    return { plugin, presence, hooksOff: hooksDisabled(sources), hooks, lines, server, sessionStart, turnEnd, release, unloaded };
+    return { plugin, presence, pluginVersions: versions.map((version) => basename(version)), pluginScripts: scripts, hooksOff: hooksDisabled(sources), hooks, lines, server, sessionStart, turnEnd, release, unloaded };
   };
   const untold = under(null);
   const asked = reported ? wiringState(untold) !== 'none' : JSON.stringify(untold.lines) !== JSON.stringify(reportHooks(sources, root, (words) => read.get(JSON.stringify(words))!, pattern));
