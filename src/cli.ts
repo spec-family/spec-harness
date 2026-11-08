@@ -23,7 +23,7 @@ import { CONFIG_FILE, ConfigError, SIBLINGS, SPEC_BRIEF_CONFIGS } from './config
 import type { ClaudeCodeWiring } from './configure.js';
 import { dirname, join, resolve } from 'node:path';
 
-import { gitDirectories, isDirectory, isFile, keepCall, loadConfig, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
+import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
 import { changedPaths, GitError, holdsPath, isShallow, show, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
@@ -175,7 +175,7 @@ async function decisionsFor(
   given: readonly string[],
   cwd: string,
   session: string | null = null,
-): Promise<{ readonly decisions: Decision[]; readonly brief: BriefRow | null } | { readonly problem: string; readonly closed: BriefRow | null }> {
+): Promise<{ readonly decisions: Decision[]; readonly brief: BriefRow | null } | { readonly problem: string; readonly closed: BriefRow | null; readonly mend?: string }> {
   // A path outside every work tree of the repository is decided as one
   // outside it, whichever brief is named and whatever is wrong with the
   // name: the problem held every write, a file outside the repository
@@ -185,6 +185,15 @@ async function decisionsFor(
   const active = outside ? null : await activeBrief(keptFor(workspace, session), options, io.env);
   const { brief, note, problem } = active === null ? { brief: null, note: undefined, problem: null } : describeActive(active);
   // A problem is said only of a brief something names, so `active` is one.
+  // Where every path the problem holds is one with a `..` that reads as
+  // outside every work tree, the write is held for the `..`, and said so,
+  // where the problem decides no file outside the repository (ADR-0005).
+  const dotted = problem === null ? [] : given.filter((path) => dotsOutside(path, workspace.root, workspace.commonDir, cwd));
+  if (dotted.length > 0 && given.every((path) => dotted.includes(path) || outsideEvery([path], workspace.root, workspace.commonDir, cwd))) {
+    const { heldForDots } = await import('./guard.js');
+    const held = heldForDots(dotted.join(', '), problem!);
+    return { problem: held.message, closed: null, mend: `${held.hint.charAt(0).toUpperCase()}${held.hint.slice(1)}.` };
+  }
   if (problem !== null) return { problem, closed: closesRound(active!) ? active.brief : null };
   const { checkPaths } = await import('./round.js');
   return { decisions: await checkPaths(workspace, brief, note, given, cwd, reader, options.base), brief };
@@ -318,6 +327,11 @@ function mending(error: unknown, request: HookRequest, cwd: string, env: CliIO['
  */
 async function sessionProblem(options: Options, io: CliIO, root: string, cwd: string | null, session: string | null): Promise<string | null> {
   const held = 'so every write of this session is held until it is mended';
+  // A file outside every work tree of the repository is decided as one
+  // outside it, whatever is wrong with the name of the brief, the
+  // configuration or spec-brief (decisionsFor, mending): such a write goes
+  // ahead, and the line says so, as the report at a turn's end does.
+  const outside = 'one to a file outside every work tree of the repository';
   try {
     const named = await openWorkspace({ ...options, root }, io);
     // A session in another work tree of the project has its writes decided
@@ -327,8 +341,8 @@ async function sessionProblem(options: Options, io: CliIO, root: string, cwd: st
     const active = await activeBrief(keptFor(workspace, session), options, io.env);
     const { problem } = describeActive(active);
     if (problem === null) return null;
-    if (closesRound(active)) return `${heldHookLine(problem).wrong}, so every write of this session is held: the round is archived and ends when this branch merges, so write on the branch of a live brief; spec-harness doctor says more`;
-    return `${heldHookLine(problem).wrong}, ${held}: fix the brief or the branch before writing; spec-harness doctor says more`;
+    if (closesRound(active)) return `${heldHookLine(problem).wrong}, so every write of this session is held, but ${outside}: the round is archived and ends when this branch merges, so write on the branch of a live brief; spec-harness doctor says more`;
+    return `${heldHookLine(problem).wrong}, ${held}, but ${outside}: fix the brief or the branch before writing; spec-harness doctor says more`;
   } catch (error) {
     // A session in no work tree has nothing to guard, as a write there has
     // not. Anything else that stops the check stops a write's as well, which
@@ -341,7 +355,11 @@ async function sessionProblem(options: Options, io: CliIO, root: string, cwd: st
     // configuration is read from a file here as before a write, so the test
     // of `file` is the compiler's, and its mutant is equivalent.
     const mendable = error instanceof ConfigError && error.file !== null && writesOnly([error.file], error.file, root);
-    return `${(error as Error).message}, ${held}${mendable ? `, but for a write to ${error.file} itself, which is not checked` : ''}; spec-harness doctor says more`;
+    // Of what stops the check, a configuration that does not load and a
+    // spec-brief that cannot answer leave a write outside every work tree
+    // to go ahead; git that does not answer, and a defect, hold it too.
+    const spared = [...(error instanceof ConfigError || error instanceof SiblingError ? [outside] : []), ...(mendable ? [`one to ${error.file} itself, which is not checked`] : [])];
+    return `${(error as Error).message}, ${held}${spared.length === 0 ? '' : `, but ${spared.join(' and ')}`}; spec-harness doctor says more`;
   }
 }
 
@@ -504,7 +522,7 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
           // Exit 2 blocks the tool call, and its stderr reaches the model. Where
           // the name stands on the hook's own line, what is wrong with it is
           // `doctor`'s to say as well, in the same words (usage.ts).
-          io.stderr.write(`spec-harness: ${heldHookLine(decided.problem).wrong}. ${decided.closed === null ? MEND : CLOSED}\n`);
+          io.stderr.write(`spec-harness: ${heldHookLine(decided.problem).wrong}. ${decided.mend ?? (decided.closed === null ? MEND : CLOSED)}\n`);
           return EXIT_ERROR;
         }
         // A line of the answer for each path, by the work tree that decided it.

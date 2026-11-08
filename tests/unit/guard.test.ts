@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { OutOfScope } from '../../src/config.js';
-import { decide, decideWritten, heldBy, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
+import { decide, decideWritten, DOTS_MEND, heldBy, heldForDots, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
 import type { BriefRow } from '../../src/types.js';
 import { row } from './helpers.js';
 
@@ -339,6 +339,19 @@ describe('a path held for what names the brief', () => {
       because: [],
       message: 'the branch names brief 999, and spec-brief knows no such brief',
       hint: 'fix the brief or the branch before writing',
+    });
+  });
+
+  it('is refused in its own words where it has a .. and reads as outside every work tree, with how to write it', () => {
+    expect(DOTS_MEND).toBe('write the path without its .., as it resolves');
+    expect(heldForDots('/elsewhere/sub/../notes.md', 'the branch names brief 999, and spec-brief knows no such brief')).toEqual({
+      path: '/elsewhere/sub/../notes.md',
+      verdict: 'deny',
+      reason: 'held',
+      because: [],
+      message:
+        '/elsewhere/sub/../notes.md has a .. in it and reads as a file outside every work tree of the repository, but a link before the .. can lead back into one, so it is held as a write in the repository is while the branch names brief 999, and spec-brief knows no such brief',
+      hint: DOTS_MEND,
     });
   });
 });

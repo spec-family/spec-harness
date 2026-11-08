@@ -226,16 +226,16 @@ describe('a configuration that does not load', () => {
     const [[text, said]] = BROKEN as [readonly [string, string]];
     writeFileSync(file, text);
     const start = JSON.stringify({ session_id: 's', cwd: repo.root, hook_event_name: 'SessionStart', source: 'startup' });
-    const line = `spec-harness: ${said}, so every write of this session is held until it is mended, but for a write to ${file} itself, which is not checked; spec-harness doctor says more`;
+    const line = `spec-harness: ${said}, so every write of this session is held until it is mended, but one to a file outside every work tree of the repository and one to ${file} itself, which is not checked; spec-harness doctor says more`;
     expect(await cli(['hook', 'claude'], repo.root, { stdin: start, env: { CLAUDE_PROJECT_DIR: repo.root } })).toEqual({
       code: 0,
       stderr: '',
       stdout: `${JSON.stringify({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } })}\n`,
     });
-    // A directory there no write reaches, and the line says no more than it did.
+    // A directory there no write reaches, so the line says only the writes outside every work tree, which go ahead.
     rmSync(file);
     mkdirSync(file);
-    const directory = 'spec-harness: .spec-harness.json is a directory, not a configuration file, so every write of this session is held until it is mended; spec-harness doctor says more';
+    const directory = 'spec-harness: .spec-harness.json is a directory, not a configuration file, so every write of this session is held until it is mended, but one to a file outside every work tree of the repository; spec-harness doctor says more';
     expect(JSON.parse((await cli(['hook', 'claude'], repo.root, { stdin: start, env: { CLAUDE_PROJECT_DIR: repo.root } })).stdout)).toMatchObject({ systemMessage: directory });
   });
 });

@@ -74,7 +74,7 @@ describe("a run of Claude Code's hook, which has one budget", () => {
 
   it('is said as a session starts, and at the end of a turn, which neither holds', async () => {
     const repo = project(4_000, { turnReport: true });
-    const said = `spec-harness: ${SPENT}, so every write of this session is held until it is mended; spec-harness doctor says more`;
+    const said = `spec-harness: ${SPENT}, so every write of this session is held until it is mended, but one to a file outside every work tree of the repository; spec-harness doctor says more`;
     expect(await hook(repo, question(repo, 'SessionStart'))).toEqual({ code: 0, stdout: `${JSON.stringify({ systemMessage: said, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: said } })}\n`, stderr: '' });
     expect(await hook(repo, question(repo, 'Stop'))).toEqual({ code: 0, stdout: `${JSON.stringify({ systemMessage: `spec-harness: ${SPENT}, so what the work tree holds is not reported` })}\n`, stderr: '' });
   });

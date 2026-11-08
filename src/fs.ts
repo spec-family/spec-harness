@@ -323,12 +323,34 @@ export function outsideEvery(paths: readonly string[], top: string, common: stri
   // a directory of the work tree, read as outside and was written inside.
   // Both readings are read below, and such a path is held as it was all
   // the same (ADR-0005).
-  if (paths.some((path) => path.split(/[\\/]/).includes('..'))) return false;
-  // As a path reads and as the system writes it, a link to nothing among
-  // its links: the file it reaches is outside too, or the path is not.
+  if (paths.some(hasDots)) return false;
+  return readsOutside(paths, top, common, cwd);
+}
+
+/** Whether a path names a `..` among its names. */
+function hasDots(path: string): boolean {
+  return path.split(/[\\/]/).includes('..');
+}
+
+/**
+ * As a path reads and as the system writes it, a link to nothing among its
+ * links, whether each path reaches only files outside every work tree.
+ */
+function readsOutside(paths: readonly string[], top: string, common: string, cwd: string): boolean {
   const reached = paths.flatMap((path) => reachedBy(path, cwd));
   const trees = workTrees(top, common);
   return trees !== null && reached.every((path) => trees.every((tree) => repositoryPath(path, tree, cwd) === null));
+}
+
+/**
+ * Whether a path with a `..` in it reads, both ways, as a file outside every
+ * work tree of the repository: {@link outsideEvery} holds it all the same,
+ * and the hook and `check_path` say that, where they said the brief's
+ * problem, which decides no file outside the repository (ADR-0005).
+ */
+export function dotsOutside(path: string, top: string, common: string, cwd: string): boolean {
+  // The work tree that was opened is among the work trees read.
+  return hasDots(path) && readsOutside([path], top, common, cwd);
 }
 
 /**

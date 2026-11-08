@@ -87,6 +87,19 @@ cannot turn a run red. The family's policy is
   `package.json`. It wrote its lines and said nothing.
 - One second is said as "1 second", in `doctor`'s note of an entry's
   `timeout` and in a probe's timeout, where it was "1 seconds".
+- **The line as a session starts says the writes the hook lets go ahead.**
+  It said every write of the session was held, where a write to a file
+  outside every work tree of the repository goes ahead, as the report at a
+  turn's end says
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+- **The MCP server starts where the configuration does not load**, and each
+  tool says why it cannot answer, reading the file again at every call,
+  where the server stopped and Claude Code said only that it could not
+  connect
+  ([ADR-0008](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0008-one-server-for-rounds.md)).
+- **A path with a `..` that reads as outside every work tree is held in its
+  own words**, with how to write it, where the hook and `check_path` held
+  it in the words of the brief's name that is none.
 
 ### Documentation
 
