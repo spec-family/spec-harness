@@ -19,6 +19,7 @@ import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { CONFIG_FILE } from './config.js';
 import {
   arrayMatcher,
+  BIN,
   chooseBase,
   describeAbsent,
   describeArrayMatcher,
@@ -65,7 +66,7 @@ import {
   SPEC_BRIEF_CONFIGS,
   SPEC_GRAPH_CONFIGS,
 } from './configure.js';
-import { readJsonObject as readJson, writeAtomic } from './fs.js';
+import { isFile, mainWorkTree, readJsonObject as readJson, writeAtomic } from './fs.js';
 import { hookPath, localBranches, remoteDefault } from './git.js';
 import { claudeCodeWiring, pluginFile } from './round.js';
 import { runSibling } from './siblings.js';
@@ -89,6 +90,9 @@ const SETTINGS = PROJECT_SETTINGS;
 function stringify(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
+
+/** What init says where the project has not installed the package every way in runs. */
+export const NOT_INSTALLED = `the hooks, the server and git's hook, init's and the plugin's alike, run ${BIN}, which is not installed here: install the package, npm install --save-dev @spec-family/spec-harness, since until it is, Claude Code cannot start the hooks or the server and lets each write go ahead, and git's hook stops every commit`;
 
 const PLUGIN_DETAIL = `load spec-harness's plugin, "${PLUGIN}": spec-brief's archive asks it whether a signed ruling allows a protected file, and refuses the file without it`;
 
@@ -472,6 +476,16 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
     });
   } else {
     steps.push({ file: hook.file, action: 'advise', detail: missingGitHook(null) });
+  }
+
+  // Every way in runs the package's script from the project, init's lines,
+  // git's hook and the plugin alike, and starts nothing where it is not
+  // installed: Claude Code lets each write go ahead, and git's hook stops
+  // every commit (ADR-0012). Said where the script is in neither place a
+  // line can name: this work tree, and a linked worktree's main one.
+  const main = mainWorkTree(workspace.commonDir);
+  if (![root, ...(main === null ? [] : [main])].some((place) => isFile(join(place, BIN)))) {
+    steps.push({ file: 'package.json', action: 'advise', detail: NOT_INSTALLED });
   }
 
   // The file the configuration names, which a ruling's signature is checked

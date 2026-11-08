@@ -2775,6 +2775,49 @@ and `npm ci` there installs nothing that brings the script.
   keeps it with a note, as `doctor` notes it: the hook 0.22.0 wrote guards
   as this one does, and differs in what it says.
 
+*Amended 2026-11-08.* **Four small things `doctor` and `init` passed over,
+from round 27's list.**
+
+- **An empty `--brief` or `--base` fails `doctor`.** The paragraph above
+  has `doctor` say them in its report where every other command refuses
+  them, and it said them with exit 0, so `doctor --brief "$ID"` with the
+  variable not set passed. The report says them as before, and the exit is
+  1: the question doctor was asked names nothing.
+- **The configured base is read as the remote's branch of that name where
+  the checkout has none.** A CI checkout fetches the base as `origin/main`
+  and makes no `main`, and `.spec-harness.json`'s `"base": "main"` named no
+  commit there, so the base was unresolved and no ruling could count. Where
+  the configured name reads as no commit, the base is
+  `remotes/origin/<name>`, spelled as git reads it beside a branch or a
+  tag of that name (`remoteDefault` in `src/git.ts`), and it is named so
+  wherever the base is said. A base given with `--base` is read as typed.
+  Every command resolves the base this way, so `doctor` and `audit` stand
+  on one base.
+- **A line whose script `doctor` cannot look for is said.** Of the
+  amendment of 2026-10-24 (a third time), a script that is a word a shell
+  reads, a relative path, or a name a program finds by itself was passed
+  over as one that is there, and the line read as guarding with nothing
+  said. It is now said beside the line, as a script that cannot be told to
+  be there, with how to write the line so that it can be: with `args`, and
+  the script named from `${CLAUDE_PROJECT_DIR}`, as `init` writes it. It
+  fails nothing, `--strict` or not: the line may guard, and what the hook
+  does with it is told as before.
+- **`init` says when the project has not installed the package.** Every
+  way in runs `node_modules/@spec-family/spec-harness/bin/spec-harness.js`
+  from the project, init's lines, git's hook and the plugin alike
+  (ADR-0012), and `init` wrote its lines and said nothing where it was not
+  there. Where it is in neither the work tree nor, from a linked worktree,
+  its main one, the plan ends with an `advise` on `package.json`: the
+  install, and that until it is done Claude Code cannot start the hooks or
+  the server and git's hook stops every commit. It is said whatever else
+  the plan does, since a line already written, or the plugin's, runs the
+  same script.
+
+And a count of one second is said as one second, in `doctor`'s note of an
+entry's `timeout` and in a probe's and its setup's timeout, where it was
+"1 seconds". An exit code that can change for a tree that passed is a minor
+release (spec-core's ADR-0009).
+
 ## Consequences
 
 An agent that writes through a shell passes the guard and is caught at the

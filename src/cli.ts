@@ -828,6 +828,10 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // place git runs its hooks from that git cannot name: --strict fails the
   // five.
   const outdated = rows.some((row) => row.state === 'outdated');
+  // A --brief or a --base given nothing is said in the report, where every
+  // other command refuses it, and fails: the question doctor was asked
+  // names nothing, as a script that hands it an unset variable does.
+  const blank = [options.brief, options.base].some((value) => value !== undefined && isBlank(value));
   const usable = rows.some((row) => row.state === 'found');
   const off = wiring.lines.some((line) => line.state === 'off' || line.state === 'held');
   const missing = wiring.presence?.state === 'absent' && wiring.hooks.length === 0;
@@ -839,7 +843,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   const untold =
     options.strict &&
     (release?.state === 'unknown' || wiring.lines.some((line) => line.state === 'unknown') || wiring.presence?.state === 'unknown' || (hook.state === 'unreadable' && hook.runs) || hook.state === 'unknown');
-  return outdated || !usable || claude === 'both' || off || unworkable || named.holds || switchedOff || missing || tooOld || stopped || untold ? EXIT_FAILED : EXIT_OK;
+  return outdated || !usable || blank || claude === 'both' || off || unworkable || named.holds || switchedOff || missing || tooOld || stopped || untold ? EXIT_FAILED : EXIT_OK;
 }
 
 /* ---------------------------------------------------------------- dispatch */

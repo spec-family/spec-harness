@@ -699,9 +699,9 @@ describe('doctor on a brief or a base that names nothing', () => {
     repo = repository({ [BRIEF_FILE]: brief(), 'briefs/archive/003_old.md': brief({ title: '003 - Old', status: 'archived' }) });
   });
 
-  it('says an empty --brief and an empty --base in its report, by the option, and fails nothing for either', async () => {
+  it('says an empty --brief and an empty --base in its report, by the option, and fails for either', async () => {
     const result = await cli(['doctor', '--brief', '', '--base', ' '], repo.root);
-    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result).toMatchObject({ code: 1, stderr: '' });
     expect(result.stdout).toContain(
       [
         '',
@@ -711,6 +711,32 @@ describe('doctor on a brief or a base that names nothing', () => {
         '',
       ].join('\n'),
     );
+    // Each alone fails as well: the question doctor was asked names nothing, as when a script hands it an unset variable.
+    expect((await cli(['doctor', '--brief', ''], repo.root)).code).toBe(1);
+    expect((await cli(['doctor', '--base', '\t'], repo.root)).code).toBe(1);
+    expect((await cli(['doctor', '--brief', '1', '--base', 'main'], repo.root)).code).toBe(0);
+  });
+
+  it("reads the configured base as the remote's branch of that name where this checkout has none, as a CI checkout fetches it, and a base on the line as typed", async () => {
+    const origin = repository({ [BRIEF_FILE]: brief() });
+    const clone = join(temp(), 'clone');
+    git(temp(), 'clone', '-q', pathToFileURL(origin.root).href, clone);
+    git(clone, 'checkout', '-q', '-b', 'brief/001-rotate');
+    git(clone, 'branch', '-q', '-D', 'main');
+    const head = git(clone, 'rev-parse', 'HEAD');
+    const configured = await cli(['doctor'], clone);
+    expect(configured.code).toBe(0);
+    expect(configured.stdout).toContain(`\nbase    remotes/origin/main (.spec-harness.json), merge base ${head.slice(0, 12)}\n`);
+    expect(parsed<{ base: unknown }>(await cli(['doctor', '--format', 'json'], clone)).base).toEqual({ ref: 'remotes/origin/main', source: 'config', mergeBase: head });
+    // A base on the line is read as typed.
+    expect((await cli(['doctor', '--base', 'main'], clone)).stdout).toContain('\nbase    none: "main" names no commit\n');
+    // Where the remote has no branch of the name either, both are said.
+    write(clone, '.spec-harness.json', JSON.stringify({ base: 'trunk', tools: siblings() }));
+    expect((await cli(['doctor'], clone)).stdout).toContain('\nbase    none: "trunk" names no commit, and neither does remotes/origin/trunk\n');
+    // And where the branch is here, it is the base, as it was.
+    write(clone, '.spec-harness.json', JSON.stringify({ base: 'main', tools: siblings() }));
+    git(clone, 'branch', '-q', 'main', 'origin/main');
+    expect((await cli(['doctor'], clone)).stdout).toContain(`\nbase    main (.spec-harness.json), merge base ${head.slice(0, 12)}\n`);
   });
 
   it('says a brief spec-brief does not know, where it printed the id and no more, and exits as it did', async () => {

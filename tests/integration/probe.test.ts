@@ -167,7 +167,7 @@ describe('probe', () => {
   it('stops a run at its timeout and calls it invalid', async () => {
     const repo = defect('id: v\nrun: node -e "setTimeout(() => {}, 60000)"\nsignature: expected fixed\ntimeout: 1');
     const report = parsed<ProbeReport>(await cli(['probe', '--format', 'json'], repo.root));
-    expect(report.results[0]?.runs).toEqual([{ outcome: 'timeout', detail: 'stopped after 1 seconds', output: '' }]);
+    expect(report.results[0]?.runs).toEqual([{ outcome: 'timeout', detail: 'stopped after 1 second', output: '' }]);
     expect(report.results[0]?.verdict).toBe('invalid');
     expect(worktrees(repo)).toHaveLength(1);
   });
@@ -178,7 +178,7 @@ describe('probe', () => {
     const repo = defect('id: v\nrun: node asking.js\nsignature: expected fixed\ntimeout: 2', { files: { 'asking.js': asking } });
     expect((await cli(['probe'], repo.root)).stderr).toBe('spec-harness: probe v is invalid at base: run 1 of 1: stopped after 2 seconds; its output ended:\nOk to proceed? (y)\n');
     const silent = defect('id: v\nrun: node -e "setTimeout(() => {}, 60000)"\nsignature: expected fixed\ntimeout: 1');
-    expect((await cli(['probe'], silent.root)).stderr).toBe('spec-harness: probe v is invalid at base: run 1 of 1: stopped after 1 seconds; it printed nothing\n');
+    expect((await cli(['probe'], silent.root)).stderr).toBe('spec-harness: probe v is invalid at base: run 1 of 1: stopped after 1 second; it printed nothing\n');
   });
 
   it('reads the declared test out of a JUnit report', async () => {
@@ -288,7 +288,7 @@ describe('probe', () => {
     const result = await cli(['probe'], repo.root);
     expect(result.code).toBe(2);
     // Stopped whole, so nothing is said to have been left running.
-    expect(result.stderr).toBe('spec-harness: the probe setup "node -e "setTimeout(() => {}, 20000)"" was stopped after 1 seconds at base:\n\n');
+    expect(result.stderr).toBe('spec-harness: the probe setup "node -e "setTimeout(() => {}, 20000)"" was stopped after 1 second at base:\n\n');
     expect(worktrees(repo)).toHaveLength(1);
   });
 });

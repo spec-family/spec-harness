@@ -9,6 +9,31 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Changed
+
+- **`doctor` fails for an empty `--brief` or `--base`.** It said them in
+  its report and exited 0, so `doctor --brief "$ID"` with the variable not
+  set passed. The report is as it was; the exit is 1
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+- **The configured base is read as the remote's branch where the checkout
+  has none.** `"base": "main"` named no commit in a CI checkout that
+  fetched only `origin/main`; the base is then `remotes/origin/main`, for
+  every command. A `--base` is read as typed.
+
+### Fixed
+
+- **`doctor` says a line whose script it cannot look for**: a word a shell
+  reads, a relative path, or a name a program finds. It passed such a line
+  over as one whose script is there; it is said now, failing nothing.
+- **`init` says when the project has not installed the package** that its
+  lines, git's hook and the plugin all run, with
+  `npm install --save-dev @spec-family/spec-harness`, as an `advise` on
+  `package.json`. It wrote its lines and said nothing.
+- One second is said as "1 second", in `doctor`'s note of an entry's
+  `timeout` and in a probe's timeout, where it was "1 seconds".
+
 ## 0.23.0
 
 git's pre-commit hook takes the commit that archives the round's brief on

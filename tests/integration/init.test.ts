@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { GUARD_HOOK, mcpServer, mergeMcp, PLUGIN, PRE_COMMIT, PROJECT_DIR_OR_HERE } from '../../src/configure.js';
 import { stateDirectory, StateError } from '../../src/fs.js';
 import { claudeCodeWiring, claudeSettingsFiles, pluginDirectories } from '../../src/round.js';
-import { gitHook } from '../../src/setup.js';
+import { gitHook, NOT_INSTALLED } from '../../src/setup.js';
 import { brief, BRIEF_FILE, claudeOf, cleanup, cli, install, installFake, installHarness, installPlugin, parsed, repository, siblings, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
@@ -74,8 +74,11 @@ describe('init', () => {
       ['.claude/settings.json', 'create'],
       ['.mcp.json', 'create'],
       ['.git/hooks/pre-commit', 'advise'],
+      ['package.json', 'advise'],
       ['.github/allowed_signers', 'advise'],
     ]);
+    // The lines it writes run the package's script, which this project has not installed yet.
+    expect(steps.steps.find((s) => s.file === 'package.json')?.detail).toBe(NOT_INSTALLED);
     const briefConfig = JSON.parse(repo.read('.spec-brief.json'));
     expect(briefConfig.plugins).toEqual([PLUGIN]);
     // Everything spec-brief init spelled out is still there.
@@ -97,6 +100,29 @@ describe('init', () => {
     expect(second.stdout).not.toContain('Nothing was changed');
     expect(snapshot(repo.root)).toEqual(settled);
     expect(['.spec-brief.json', '.spec-harness.json', '.claude/settings.json', '.mcp.json'].map((file) => repo.read(file))).toEqual(contents);
+  });
+
+  it('says, where the project has not installed the package every way in runs, that it has not, and nothing once it has', async () => {
+    const note = (steps: readonly Step[]) => steps.filter((s) => s.file === 'package.json');
+    const plan = async (root: string, ...more: string[]) => parsed<{ steps: Step[] }>(await cli(['init', '--format', 'json', ...more], root)).steps;
+    const repo = installed();
+    expect(note(await plan(repo.root))).toEqual([{ file: 'package.json', action: 'advise', detail: NOT_INSTALLED }]);
+    expect(NOT_INSTALLED).toBe(
+      "the hooks, the server and git's hook, init's and the plugin's alike, run node_modules/@spec-family/spec-harness/bin/spec-harness.js, which is not installed here: install the package, npm install --save-dev @spec-family/spec-harness, since until it is, Claude Code cannot start the hooks or the server and lets each write go ahead, and git's hook stops every commit",
+    );
+    // Said once the lines are written as well, and where the plugin would bring them: each runs the package.
+    await cli(['init', '--write'], repo.root);
+    expect((await plan(repo.root)).filter((s) => s.action === 'create' || s.action === 'update')).toEqual([]);
+    expect(note(await plan(repo.root))).toEqual([{ file: 'package.json', action: 'advise', detail: NOT_INSTALLED }]);
+    // Installed, nothing is said.
+    installHarness(repo.root);
+    expect(note(await plan(repo.root, '--git-hook'))).toEqual([]);
+    // In a linked worktree, the main work tree's install is one a line can name.
+    const tree = join(temp(), 'w');
+    repo.git('worktree', 'add', '-q', '-b', 'w', tree);
+    expect(note(await plan(tree, '--git-hook'))).toEqual([]);
+    rmSync(join(repo.root, 'node_modules', '@spec-family', 'spec-harness'), { recursive: true });
+    expect(note(await plan(tree))).toEqual([{ file: 'package.json', action: 'advise', detail: NOT_INSTALLED }]);
   });
 
   it('writes onFailure "block" on its own entries only when asked, onto entries a run before wrote too, and never onto a person\'s', async () => {
