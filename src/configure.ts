@@ -1253,7 +1253,11 @@ export interface PluginsRoot {
  * that holds no version of it, where no Claude Code session runs, so it is
  * not looked for ({@link onCiRunner}).
  */
-export type PluginPresence = { readonly state: 'present'; readonly detail: null } | { readonly state: 'absent' | 'unknown' | 'unchecked'; readonly detail: string };
+export type PluginPresence =
+  | { readonly state: 'present'; readonly detail: null }
+  | { readonly state: 'absent'; readonly detail: string }
+  | { readonly state: 'unknown'; readonly detail: string }
+  | { readonly state: 'unchecked'; readonly detail: string };
 
 /**
  * Whether doctor runs on a CI runner: `CI` set to anything but `false` or
@@ -1527,18 +1531,14 @@ function runInit(wiring: Wired): string {
 }
 
 /**
- * Why the plugin settings turn on brings nothing here, or `null` where it
- * does, may, or none is on: it is not on this machine, or this is a CI
- * runner, where no session runs.
+ * The presence of the plugin settings turn on where it brings nothing here,
+ * with why, or `null` where it does, may, or none is on: it is not on this
+ * machine, or this is a CI runner, where no session runs.
  */
-function absence(wiring: Wired): string | null {
+function absence(wiring: Wired): Extract<PluginPresence, { readonly state: 'absent' | 'unchecked' }> | null {
   const presence = wiring.presence ?? null;
-  return presence?.state === 'absent' || presence?.state === 'unchecked' ? presence.detail : null;
-}
-
-/** Whether the plugin settings turn on is left unchecked, on a CI runner. */
-function unchecked(wiring: Wired): boolean {
-  return wiring.presence?.state === 'unchecked';
+  if (presence === null) return null;
+  return presence.state === 'absent' || presence.state === 'unchecked' ? presence : null;
 }
 
 /**
@@ -1590,7 +1590,7 @@ export function describePresence(wiring: Wired): string | null {
   if (plugin === null || presence === undefined || presence === null || presence.state === 'present') return null;
   if (presence.state === 'unknown') return `whether ${plugin.id} is on this machine cannot be told: ${presence.detail}. A plugin that is not there brings no hook: Claude Code's /plugin lists it, and its errors`;
   // On a runner the wiring's own sentence says it where nothing else is wired.
-  if (unchecked(wiring)) return wiring.hooks.length > 0 || wiring.server ? `${isOn(plugin)}; ${presence.detail}` : null;
+  if (presence.state === 'unchecked') return wiring.hooks.length > 0 || wiring.server ? `${isOn(plugin)}; ${presence.detail}` : null;
   if (wiring.hooks.length > 0) return `${isAbsent(plugin, presence.detail, 'no hook')}. With the plugin installed as well, ${PARTS.hooks.twice}: ${turnOff(plugin)}`;
   return wiring.server ? unguarded(plugin, presence.detail, wiring) : null;
 }
@@ -1611,7 +1611,7 @@ export function describeClaudeCode(wiring: Wired): string {
   }
   const absent = absence(wiring);
   if (absent !== null && entries !== '') return own;
-  if (absent !== null) return unchecked(wiring) ? `${isOn(plugin)}; ${absent}` : unguarded(plugin, absent, wiring);
+  if (absent !== null) return absent.state === 'unchecked' ? `${isOn(plugin)}; ${absent.detail}` : unguarded(plugin, absent.detail, wiring);
   if (entries === '') return `${isOn(plugin)} and brings the guard hooks and the server`;
   const twice = [...(wiring.hooks.length > 0 ? [PARTS.hooks.twice] : []), ...(wiring.server ? [PARTS.server.twice] : [])].join(' and ');
   return `${isOn(plugin)}, beside ${entries}: ${twice}. Keep one: take spec-harness's entries out of those files, or ${turnOff(plugin)}`;
