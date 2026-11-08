@@ -459,6 +459,28 @@ describe('the siblings', () => {
     return ['node', join(directory, 'sibling.js')];
   }
 
+  it('says a command "tools" names that runs a script of the earlier scope, and fails where the script is gone', async () => {
+    const script = 'node_modules/@descent-vtt/spec-guard/bin/spec-guard.js';
+    const repo = repository({ [BRIEF_FILE]: brief(), [script]: '' }, { tools: { 'spec-brief': ['node', SPEC_BRIEF], 'spec-guard': ['node', script] } });
+    const note = `"tools.spec-guard" in .spec-harness.json runs ${script}, a script of @descent-vtt/spec-guard, the family's name until 2026-10-26,`;
+    const there = await cli(['doctor', '--format', 'json'], repo.root);
+    expect(there.code).toBe(0);
+    expect(parsed<{ siblings: { tool: string }[] }>(there).siblings.find((sibling) => sibling.tool === 'spec-guard')).toEqual({
+      tool: 'spec-guard',
+      state: 'found',
+      minimum: expect.any(String),
+      version: null,
+      elsewhere: null,
+      detail: `node ${script} (named in .spec-harness.json; its version is not checked); ${note} which runs while that package is installed, and not once it is uninstalled: name node_modules/@spec-family/spec-guard/bin/spec-guard.js in its place, or take the entry out and the harness runs the one installed in the project`,
+    });
+    rmSync(join(repo.root, script));
+    const gone = await cli(['doctor'], repo.root);
+    expect(gone.code).toBe(1);
+    expect(gone.stdout).toContain(`found     spec-guard  node ${script} (named in .spec-harness.json; its version is not checked); ${note} which is not there, so the harness cannot run it:`);
+    // A command of another path is not read for the scope, and fails nothing.
+    expect((await cli(['doctor'], repository({ [BRIEF_FILE]: brief() }).root)).code).toBe(0);
+  });
+
   it('reports which siblings it found, and fails only when it found none', async () => {
     const repo = repository({ [BRIEF_FILE]: brief() });
     repo.git('checkout', '-q', '-b', 'brief/001-x');
@@ -551,13 +573,21 @@ describe('the siblings', () => {
     expect(settled.stdout).toContain("\nclaude  init's entries: the guard hooks in .claude/settings.json, the server in .mcp.json\n");
   });
 
-  it('reports the plugin alone, turned on in the user\'s settings, as the guard, with exit 0', async () => {
+  it('reports the plugin alone, turned on in the user\'s settings, as the guard, with exit 0 where the project installs the package its hooks run', async () => {
     const user = temp();
     write(user, 'settings.json', JSON.stringify({ enabledPlugins: { 'spec-harness@spec-tools': true } }));
     const repo = repository({ '.claude/settings.json': JSON.stringify({ permissions: {} }) });
+    installHarness(repo.root);
     const result = await cli(['doctor'], repo.root, { env: { CLAUDE_CONFIG_DIR: user } });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(`\nclaude  the spec-harness plugin is on (spec-harness@spec-tools in ${join(user, 'settings.json')}) and brings the guard hooks and the server\n`);
+    // Without the package, the plugin's hooks cannot start, and Claude Code lets each write go ahead (ADR-0012, amended 2026-11-08).
+    rmSync(join(repo.root, 'node_modules', '@spec-family', 'spec-harness'), { recursive: true });
+    const bare = await cli(['doctor'], repo.root, { env: { CLAUDE_CONFIG_DIR: user } });
+    expect(bare.code).toBe(1);
+    expect(bare.stdout).toContain(
+      `\n        the spec-harness plugin is on (spec-harness@spec-tools in ${join(user, 'settings.json')}), and its hooks and server run \${CLAUDE_PROJECT_DIR}/node_modules/@spec-family/spec-harness/bin/spec-harness.js, which this project has not installed, so Claude Code cannot start them and lets each write go ahead: install the package they run in the project, npm install --save-dev @spec-family/spec-harness, which every project the plugin guards installs\n`,
+    );
   });
 
   it('reports a sibling older than this release runs as a problem, naming the minimum', async () => {
@@ -1569,6 +1599,107 @@ describe("doctor on the line of Claude Code's hook in its settings (ADR-0005)", 
         `whether ${ID} is on this machine cannot be told: ${record}, where Claude Code records the marketplaces it has fetched, is not there. A plugin that is not there brings no hook: Claude Code's /plugin lists it, and its errors`,
       ]);
       expect((await wiring(repo, env)).code).toBe(0);
+    });
+  });
+
+  describe('a plugin-only project: the package the plugin runs, and a CI runner (ADR-0012, amended 2026-11-08)', () => {
+    const ID = 'spec-harness@spec-tools';
+    const ON = { enabledPlugins: { [ID]: true } };
+    const PLUGIN = `the spec-harness plugin is on (${ID} in .claude/settings.json)`;
+    const EARLIER = '${CLAUDE_PROJECT_DIR}/node_modules/@descent-vtt/spec-harness/bin/spec-harness.js';
+    const INSTALL = 'install the package they run in the project, npm install --save-dev @spec-family/spec-harness, which every project the plugin guards installs';
+    const RUNNER = 'CI is set, so this is a CI runner, where no Claude Code session runs: the plugin is not looked for here, and neither is the package its hooks run';
+    interface Wiring {
+      state: string;
+      presence: { state: string; detail: string | null } | null;
+      pluginVersions: string[];
+      pluginScripts: { script: string; file: string | null; there: boolean }[] | null;
+      notes: string[];
+      detail: string;
+      release: { state: string };
+    }
+    const wiring = async (repo: Repository, env: Record<string, string>, ...more: string[]) => {
+      const result = await cli(['doctor', ...more, '--format', 'json'], repo.root, { env });
+      return { code: result.code, ...parsed<{ claudeCode: Wiring }>(result).claudeCode };
+    };
+
+    it('fails where the plugin is on this machine and the project has not installed the package its hooks run, and says how to install it', async () => {
+      const env = { ...newEnough(), CLAUDE_CODE_PLUGIN_CACHE_DIR: installPlugin(temp()) };
+      const repo = aRepository({ '.claude/settings.json': JSON.stringify(ON) });
+      const bare = await wiring(repo, env);
+      expect(bare).toMatchObject({ code: 1, state: 'plugin', presence: { state: 'present' }, pluginVersions: ['0.16.0'], pluginScripts: [{ script: SCRIPT, file: null, there: false }] });
+      expect(bare.notes).toEqual([`${PLUGIN}, and its hooks and server run ${SCRIPT}, which this project has not installed, so Claude Code cannot start them and lets each write go ahead: ${INSTALL}`]);
+      const pretty = await cli(['doctor'], repo.root, { env });
+      expect(pretty.stdout).toContain(`\nclaude  ${PLUGIN} and brings the guard hooks and the server\n        ${PLUGIN}, and its hooks and server run ${SCRIPT}, which this project has not installed`);
+      installHarness(repo.root);
+      expect(await wiring(repo, env)).toMatchObject({ code: 0, pluginScripts: [{ script: SCRIPT, file: null, there: true }], notes: [] });
+    });
+
+    it('reads what the version a cache holds runs, and says a plugin of the earlier scope, or of a release after the package installed', async () => {
+      const plugins = installPlugin(temp());
+      const version = join(plugins, 'cache', 'spec-tools', 'spec-harness', '0.16.0');
+      const runs = (script: string) => {
+        write(version, 'hooks/hooks.json', JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node', args: [script, 'hook', 'claude'] }] }] } }));
+        write(version, '.mcp.json', JSON.stringify({ mcpServers: { 'spec-harness': { command: 'node', args: [script, 'mcp', '--root', '${CLAUDE_PROJECT_DIR}'] } } }));
+      };
+      const env = { ...newEnough(), CLAUDE_CODE_PLUGIN_CACHE_DIR: plugins };
+      const repo = repository({ '.claude/settings.json': JSON.stringify(ON) });
+      runs(EARLIER);
+      const earlier = await wiring(repo, env);
+      expect(earlier).toMatchObject({
+        code: 1,
+        pluginScripts: [
+          { script: EARLIER, file: join(version, 'hooks', 'hooks.json'), there: false },
+          { script: EARLIER, file: join(version, '.mcp.json'), there: false },
+        ],
+      });
+      expect(earlier.notes).toEqual([
+        `${PLUGIN}, and its hooks and server run ${EARLIER}, which this project has not installed, so Claude Code cannot start them and lets each write go ahead: ${INSTALL}; a script under @descent-vtt is the plugin's of a release before 0.22.0, which runs a package no release under @spec-family installs: update the plugin as well, from its marketplace`,
+      ]);
+      // The plugin's own script, of a release after the package here: a note, which fails nothing.
+      runs(SCRIPT);
+      const manifest = join(repo.root, 'node_modules', '@spec-family', 'spec-harness', 'package.json');
+      writeFileSync(manifest, JSON.stringify({ ...(JSON.parse(readFileSync(manifest, 'utf8')) as object), version: '0.15.2' }));
+      const ahead = await wiring(repo, env);
+      expect(ahead).toMatchObject({ code: 0, pluginScripts: [{ script: SCRIPT, there: true }, { script: SCRIPT, there: true }] });
+      expect(ahead.notes).toEqual([
+        "note: the plugin is 0.16.0, a release after the package its hooks and server run, 0.15.2 here: they are the plugin's release, and the package installed here answers them, so install that release of the package, npm install --save-dev @spec-family/spec-harness@0.16.0",
+      ]);
+      writeFileSync(manifest, JSON.stringify({ ...(JSON.parse(readFileSync(manifest, 'utf8')) as object), version: '0.16.0' }));
+      expect((await wiring(repo, env)).notes).toEqual([]);
+    });
+
+    it('looks for the plugin\'s script, in a linked worktree, in both places ${CLAUDE_PROJECT_DIR} can name, and fails only where it is in neither', async () => {
+      const env = { ...newEnough(), CLAUDE_CODE_PLUGIN_CACHE_DIR: installPlugin(temp()) };
+      const repo = aRepository({ '.claude/settings.json': JSON.stringify(ON) });
+      installHarness(repo.root);
+      const tree = join(temp(), 'w');
+      repo.git('worktree', 'add', '-q', '-b', 'w', tree);
+      const linked: Repository = { ...repo, root: tree };
+      // The main checkout's install is there, which a worktree session of the desktop app runs.
+      expect(await wiring(linked, env)).toMatchObject({ code: 0, pluginScripts: [{ script: SCRIPT, there: true }] });
+      rmSync(join(repo.root, 'node_modules', '@spec-family', 'spec-harness'), { recursive: true, force: true });
+      expect(await wiring(linked, env)).toMatchObject({ code: 1, pluginScripts: [{ script: SCRIPT, there: false }] });
+      // The linked worktree's own install is the one a session started there runs.
+      installHarness(tree);
+      expect(await wiring(linked, env)).toMatchObject({ code: 0, pluginScripts: [{ script: SCRIPT, there: true }] });
+    });
+
+    it('requires neither the plugin nor the package on a CI runner, --strict or not, where no cache holds the plugin', async () => {
+      // No Claude Code on PATH and no plugins root, as on a hosted runner.
+      const repo = aRepository({ '.claude/settings.json': JSON.stringify(ON) });
+      for (const more of [[], ['--strict']]) {
+        const said = await wiring(repo, { CLAUDE_CODE_PLUGIN_CACHE_DIR: temp(), CI: 'true' }, ...more);
+        expect(said, more.join(' ')).toMatchObject({ code: 0, state: 'none', presence: { state: 'unchecked', detail: RUNNER }, pluginScripts: null, detail: `${PLUGIN}; ${RUNNER}`, notes: [], release: { state: 'unchecked' } });
+      }
+      // Off a runner, the same project fails: the plugin may be here, and its hooks cannot start.
+      expect((await wiring(repo, { CLAUDE_CODE_PLUGIN_CACHE_DIR: temp() })).code).toBe(1);
+      // A plugin that is not on this machine starts nothing: what it would run is not read, and what is said is that it is not there.
+      const recorded = temp();
+      write(recorded, 'known_marketplaces.json', '{}');
+      expect(await wiring(repo, { CLAUDE_CODE_PLUGIN_CACHE_DIR: recorded })).toMatchObject({ code: 1, state: 'none', presence: { state: 'absent' }, pluginScripts: null, notes: [] });
+      // And on a runner that holds the plugin after all, it is read as anywhere.
+      expect(await wiring(repo, { ...newEnough(), CLAUDE_CODE_PLUGIN_CACHE_DIR: installPlugin(temp()), CI: 'true' })).toMatchObject({ code: 1, presence: { state: 'present' } });
     });
   });
 });

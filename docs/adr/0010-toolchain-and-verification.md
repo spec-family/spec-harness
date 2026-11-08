@@ -1193,3 +1193,35 @@ and `é`), where two mutants a test kills differ on 6,320,546 of the same
 pairs. No test can kill them, and none is added. Source written so that no
 such mutant is made would end the clock; that is a change of `src/` no
 decision asked for, and is left.
+
+*Amended 2026-11-08.* **No mutant decided by a clock or by chance in
+`branch.ts` and where the copy of the signers is named.** The maintainer
+asked for the source written so that none is made (round 27). Of the
+equivalent mutants a sweep counted one way in some runs and the other in
+the rest, four were `branch.ts`'s, the three above and `end <= name.length`
+beside them, and one `round.ts`'s, `'hex'` made empty, which the record of
+0.13.0 above has counted killed by a NUL among the digest's bytes.
+
+- **`branch.ts`** reads the offsets a template's prefix can end at as a
+  set, built from the name's characters and from offsets reached, and an
+  id as a pattern read from where the prefix ends,
+  `^[A-Za-z0-9]+(?=[-_/.]|$)`. No index is bounded, so no bound one past
+  the end is written, and no list starts with a value no reading of it
+  can use. A star adds no offset at the end of the name, where no id
+  starts, and each set is filled in increasing order, which is the order
+  the ends are read in, so nothing sorts them. The equivalent mutants the
+  comments named, the four above, the two anchors of the character test
+  and the two tables made with no places, are not made.
+  `tests/unit/branch.test.ts` holds the reading to the one it replaced,
+  kept in the test as it was, for 85 templates (up to three of `*`, `/`,
+  `-` and `a` before `{id}`) and 781 names (up to four of `a`, `1`, `/`, `-`
+  and `+`), in 70 ms here. Written into the source one at a time, 43
+  mutants of the new lines, those the mutators make and the blocks
+  emptied, each failed a test of that file.
+- **`round.ts`** names the copy by the whole digest, read as hex from its
+  bytes: `digest().toString('hex')`. A buffer refuses to be read in no
+  encoding every time, so `'hex'` made empty fails every test that checks
+  a ruling, and with no cut of the digest there is no `slice` for a
+  mutant to leave out unseen. Written into the source, it and `'sha256'`
+  made empty each failed `tests/integration/rulings.test.ts`. Where the
+  copy is kept, `'signers'`, stays equivalent, and is said beside it.

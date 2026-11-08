@@ -55,21 +55,32 @@ export const MARKETPLACE_MANIFEST = '.claude-plugin/marketplace.json';
 
 /**
  * Where the Claude Code plugin names a version other than the package's, or
- * `null` when both of its manifests carry the package's. The plugin is this
- * package - its hooks and its server run the spec-harness installed beside
- * it - so a plugin at another version would install as a release this tag is
- * not.
+ * `null` when its manifest carries the package's and the marketplace lists
+ * it with none of its own. The plugin is this package - its hooks and its
+ * server run the spec-harness installed beside it - so a plugin at another
+ * version would install as a release this tag is not.
+ *
+ * The version is written once, in the manifest. Claude Code takes the
+ * manifest's `version` over the marketplace entry's, and
+ * `claude plugin validate` warns where both name one (the marketplace
+ * reference, Plugin entries, and the manifest reference, Metadata
+ * precedence: https://code.claude.com/docs/en/plugins/marketplace-reference,
+ * read 2026-11-08), so an entry's version is one nothing reads but the
+ * warning.
  */
 export function pluginDrift(version: string, plugin: unknown, marketplace: unknown): string | null {
   const entries = field(marketplace, 'plugins');
   const entry = Array.isArray(entries) ? (entries as unknown[]).find((candidate) => field(candidate, 'name') === 'spec-harness') : undefined;
-  const found: [string, unknown][] = [
-    [PLUGIN_MANIFEST, field(plugin, 'version')],
-    [`the spec-harness plugin in ${MARKETPLACE_MANIFEST}`, field(entry, 'version')],
-  ];
-  const wrong = found.filter(([, named]) => named !== version).map(([where, named]) => `${where} names ${typeof named === 'string' ? named : 'no version'}`);
-  if (wrong.length === 0) return null;
-  return `${wrong.join(', and ')}, where package.json names ${version}: the plugin is released with the package, at its version`;
+  const named = field(plugin, 'version');
+  const wrong: string[] = [];
+  if (named !== version) {
+    wrong.push(`${PLUGIN_MANIFEST} names ${typeof named === 'string' ? named : 'no version'}, where package.json names ${version}: the plugin is released with the package, at its version`);
+  }
+  if (entry === undefined) wrong.push(`${MARKETPLACE_MANIFEST} lists no spec-harness plugin`);
+  else if (field(entry, 'version') !== undefined) {
+    wrong.push(`the spec-harness plugin in ${MARKETPLACE_MANIFEST} names a version of its own: Claude Code reads ${PLUGIN_MANIFEST}'s before it, and claude plugin validate warns where both name one, so take it out`);
+  }
+  return wrong.length === 0 ? null : wrong.join('; ');
 }
 
 function field(value: unknown, key: string): unknown {

@@ -590,6 +590,96 @@ ahead, where `init` writing a line once and never again had been safe.
   beside the new ones, as data, and runs the rewritten entries as Claude
   Code starts them.
 
+*Amended 2026-11-08.* **Two more names the earlier scope left: spec-brief's
+schema and the spec-brief plugin in `audit`'s hint.**
+
+- **`init --write` moves `$schema` in spec-brief's configuration**, where
+  it names a place spec-brief's `init` wrote before the move: the copy in
+  the earlier package, `./node_modules/@descent-vtt/spec-brief/schema.json`,
+  which spec-brief's `init` wrote from its release of 2026-09-26 on, and the
+  file on the earlier repository's main before that. Neither is there for a
+  project that installs `@spec-family/spec-brief`, so an editor checks the
+  file by no schema. It is written as
+  `./node_modules/@spec-family/spec-brief/schema.json`, what spec-brief's
+  `init` writes now, where it stands in the file, in the same `update` as
+  the plugin's name, and said in it. A schema anywhere else is a person's,
+  and left. `doctor` says nothing of it: nothing it checks reads the key.
+- **`audit` says the plugin's earlier name where the configuration names
+  it so.** For a protected file a verified ruling allows, which the
+  archive refused, `audit` advised adding the plugin by its name now
+  wherever the configuration did not load it by that name. Beside the
+  earlier name, which spec-brief loads from the earlier package while that
+  is installed, that is a second plugin of one name, which spec-brief
+  refuses. Where the configuration names the plugin by the earlier name
+  alone, which `doctor` reports as `earlier`, the hint says so and that
+  `init --write` names it in its place. `AuditInput` has
+  `pluginNamedEarlier` for it, optional, so a caller of the library that
+  does not give it reads the hint as before.
+
+*Amended again 2026-11-08.* **The project's install stays the one way in, and
+`doctor` holds a plugin-only project to it.** The plugin's hooks and server
+run `${CLAUDE_PROJECT_DIR}/node_modules/@spec-family/spec-harness/bin/spec-harness.js`.
+In a project that has not installed the package that script is not there,
+so Claude Code cannot start the hooks and lets each write go ahead (the
+hooks reference, as the amendment of 2026-10-26 read it), and `doctor`
+exited 0: it read whether the plugin was on this machine, and nothing of
+what it ran. On a CI runner, where no Claude Code keeps plugins, the same
+project's `doctor --strict` failed, the plugin being one that cannot be
+told to be there, and the release of a `claude` that is not on the runner
+being asked for it.
+
+Two ways out were put to the maintainer in round 27: hold the project to
+the install, or ship the program inside the plugin and run it from
+`${CLAUDE_PLUGIN_ROOT}`, which a listing in Anthropic's plugin directory
+would want. The maintainer decided the first, and that this decision is
+otherwise unchanged. The reason is the lockfile: a project that installs
+the package pins, in its `package-lock.json`, the release of spec-harness
+its siblings were measured against (`MINIMUM_VERSIONS`, ADR-0011), and every
+clone, CI and git's hook run that release. A plugin carries whatever
+release the person last fetched, which no file of the project records. The
+plugin is not moved to `${CLAUDE_PLUGIN_ROOT}`.
+
+- **`doctor` reads what the plugin runs**, where it may be on this machine,
+  `present` or `unknown`: each script under `${CLAUDE_PROJECT_DIR}` that
+  `hooks/hooks.json` and `.mcp.json` of each version a cache holds name, the
+  files Claude Code loads them from (*Find plugins on disk*), read in every
+  string so that exec form and shell form are both read; and where no version
+  is cached, as for a plugin a relative path loads, the script every release
+  under `@spec-family` runs. Each is looked for in the places
+  `${CLAUDE_PROJECT_DIR}` can name, a linked worktree's own and its main
+  work tree's (amended 2026-10-24). One that is in neither exits 1, with
+  `npm install --save-dev @spec-family/spec-harness`, and, for a script
+  under `@descent-vtt`, which only a plugin before 0.22.0 runs, that the
+  plugin wants updating as well. A plugin `absent` from the machine starts
+  nothing, and is read as before. This replaces the sentence of the
+  amendments of 2026-10-18 and 2026-10-26 that the plugin's own hooks are not
+  read.
+- **A plugin of a release after the package installed is a note**: the
+  version a cache directory names, read as a release, against the
+  `package.json` of the package in this work tree. The hooks and server are
+  the plugin's release, and the package here answers them. A directory named
+  by a commit, as a plugin with no version is cached, is not compared.
+- **On a CI runner the plugin is not required.** Where `CI` is set to
+  anything but `false` or `0`, as GitHub Actions and GitLab CI set it on
+  every job, and no cache holds a version of the plugin, its presence is
+  `unchecked`: no Claude Code session runs there, so it brings nothing, is
+  not counted as wiring, the release of Claude Code is not asked for it,
+  what it would run is not read, and `--strict` fails nothing for it.
+  Beside init's entries the wiring is theirs, as beside a plugin that is not
+  on the machine, so a project that commits both is the double install on a
+  person's machine and not on its runner. A runner that holds the plugin
+  after all is read as any machine. The variable is the forges' own, and
+  the harness reads it for no other purpose.
+
+`--format json` has `claudeCode.pluginVersions`, the versions a cache holds,
+and `claudeCode.pluginScripts`, each script with the `file` it was read
+from, `null` for the release's own, and whether it is `there`, `null` where
+nothing was read; `claudeCode.presence.state` gains `unchecked`. Nothing is
+renamed or taken away, so no `schemaVersion` moves; an exit code that can
+change for a tree that passed is a minor release (spec-core's ADR-0009).
+`init` is unchanged: on a runner it reads the plugin as it reads one that
+cannot be told to be there, and writes neither entry.
+
 ## Consequences
 
 - A plugin turned on by managed settings or `--settings` is invisible to

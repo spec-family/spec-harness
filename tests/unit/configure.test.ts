@@ -19,18 +19,22 @@ import {
   GIT_HOOK_LINE,
   gitHookNote,
   describePlugin,
+  describePluginAhead,
+  describePluginScripts,
   describeSignerKeys,
   describeSignerProblem,
   describeGraph,
   describeSigners,
   describeSkipped,
   earlierPreCommit,
+  earlierTool,
   enabledPlugin,
   exportedFile,
   graphReadsBriefs,
   GUARD_HOOK,
   GUARD_MOVED,
   guardSwitchedOff,
+  guardWired,
   handedLines,
   hooksDisabled,
   HYPHEN_SINCE,
@@ -46,6 +50,7 @@ import {
   mcpServer,
   mergeClaudeSettings,
   NO_SESSION_START,
+  onCiRunner,
   ON_FAILURE_SINCE,
   readsOnFailure,
   startsSessions,
@@ -59,20 +64,25 @@ import {
   mergeSpecBrief,
   mergeSpecGraph,
   missingGitHook,
+  namesEarlierSchema,
   ONE_STRING,
   patternReader,
   PLUGIN,
   PLUGIN_MOVED,
+  PLUGIN_SCRIPT,
   pluginMarketplace,
   pluginPresence,
   PRE_COMMIT,
   PROTECT_RULE_FILES,
   PROJECT_DIR,
   PROJECT_DIR_OR_HERE,
+  projectScripts,
   registersServer,
   reportHooks,
+  SCHEMA_MOVED,
   SERVER_MOVED,
   SPEC_BRIEF_CONFIGS,
+  SPEC_BRIEF_SCHEMA,
   SPEC_GRAPH_CONFIGS,
   wiringState,
   writtenHooks,
@@ -1172,6 +1182,110 @@ describe('the plugin that settings turn on, and whether it is on this machine (A
     );
     expect(describeAbsent(plugin, WHY, 'hooks', true)).toBe(`${ON} and is not on this machine, so it brings no hook here: why. This file holds spec-harness's hooks; with the plugin installed as well, every write is guarded twice: ${OFF}`);
     expect(describeAbsent(plugin, WHY, 'server', true)).toBe(`${ON} and is not on this machine, so it brings no server here: why. This file holds the spec-harness server; with the plugin installed as well, the server is registered twice: ${OFF}`);
+  });
+
+  describe('on a CI runner (ADR-0012, amended 2026-11-08)', () => {
+    const RUNNER = 'CI is set, so this is a CI runner, where no Claude Code session runs: the plugin is not looked for here, and neither is the package its hooks run';
+    const ON = `the spec-harness plugin is on (${ID} in .claude/settings.json)`;
+
+    it('is a CI runner where CI is set to anything but false or 0', () => {
+      for (const value of ['true', '1', 'TRUE', ' yes ', 'x']) expect(onCiRunner({ CI: value }), value).toBe(true);
+      for (const value of [undefined, '', '  ', 'false', 'FALSE', ' False ', '0', ' 0 ']) expect(onCiRunner({ CI: value }), String(value)).toBe(false);
+      expect(onCiRunner({})).toBe(false);
+      // Another forge's variable alone is no runner here.
+      expect(onCiRunner({ GITHUB_ACTIONS: 'true', GITLAB_CI: 'true' })).toBe(false);
+    });
+
+    it('leaves the plugin unchecked where no cache holds a version of it, whatever else would be said, and reads one a cache holds', () => {
+      const unchecked = { state: 'unchecked', detail: RUNNER };
+      expect(pluginPresence(plugin, [on(PROJECT)], [], true)).toEqual(unchecked);
+      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })], true)).toEqual(unchecked);
+      expect(pluginPresence({ id: 'spec-harness@inline', file: PROJECT }, [on(PROJECT)], [], true)).toEqual(unchecked);
+      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null }), dir({ directory: SEED, cached: true })], true)).toEqual({ state: 'present', detail: null });
+      // Off a runner, as it was.
+      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })], false).state).toBe('unknown');
+      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })]).state).toBe('unknown');
+    });
+
+    it('counts an unchecked plugin as wiring nothing, says why, and fails nothing for it', () => {
+      const presence = { state: 'unchecked', detail: RUNNER } as const;
+      expect(wiringState({ plugin, presence, hooks: [], server: false })).toBe('none');
+      expect(wiringState({ plugin, presence, hooks: [PROJECT], server: false })).toBe('init');
+      expect(wiringState({ plugin, presence, hooks: [], server: true })).toBe('init');
+      expect(guardWired({ plugin, presence, hooks: [], server: true })).toBe(false);
+      expect(guardSwitchedOff({ plugin, presence, hooks: [], server: false, hooksOff: PROJECT })).toBe(false);
+      expect(describeClaudeCode({ plugin, presence, hooks: [], server: false })).toBe(`${ON}; ${RUNNER}`);
+      expect(describeClaudeCode({ plugin, presence, hooks: [PROJECT], server: false })).toBe("init's entries: the guard hooks in .claude/settings.json");
+      expect(describePresence({ plugin, presence, hooks: [], server: false })).toBeNull();
+      expect(describePresence({ plugin, presence, hooks: [PROJECT], server: false })).toBe(`${ON}; ${RUNNER}`);
+      expect(describePresence({ plugin, presence, hooks: [], server: true })).toBe(`${ON}; ${RUNNER}`);
+    });
+  });
+
+  describe('what the plugin runs from the project (ADR-0012, amended 2026-11-08)', () => {
+    const SCRIPT = '${CLAUDE_PROJECT_DIR}/node_modules/@spec-family/spec-harness/bin/spec-harness.js';
+    const EARLIER = '${CLAUDE_PROJECT_DIR}/node_modules/@descent-vtt/spec-harness/bin/spec-harness.js';
+    const ON = `the spec-harness plugin is on (${ID} in .claude/settings.json)`;
+    const INSTALL = 'install the package they run in the project, npm install --save-dev @spec-family/spec-harness, which every project the plugin guards installs';
+
+    it('is the script every release under @spec-family runs, the hooks and the server alike', () => {
+      expect(PLUGIN_SCRIPT).toBe(SCRIPT);
+    });
+
+    it('reads each script under the project in a plugin file, exec form and shell form, once each, in order', () => {
+      const hooks = {
+        hooks: {
+          PreToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'node', args: [SCRIPT, 'hook', 'claude'], timeout: 60 }] }],
+          PostToolUse: [{ hooks: [{ type: 'command', command: `node "${EARLIER}" hook claude` }] }],
+          SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: [SCRIPT, 'hook', 'claude'] }] }],
+        },
+      };
+      expect(projectScripts(hooks)).toEqual([SCRIPT, EARLIER]);
+      const mcp = { mcpServers: { 'spec-harness': { command: 'node', args: [SCRIPT, 'mcp', '--root', '${CLAUDE_PROJECT_DIR}'] }, other: { command: 'x', args: ['${CLAUDE_PROJECT_DIR}/tools/x.mjs'] } } };
+      expect(projectScripts(mcp)).toEqual([SCRIPT]);
+    });
+
+    it('reads no script outside the project, none that is not a script, and nothing of a file that holds none', () => {
+      for (const word of ['${CLAUDE_PLUGIN_ROOT}/bin/x.js', '/abs/node_modules/x.js', 'node_modules/x.js', '${CLAUDE_PROJECT_DIR}', '${CLAUDE_PROJECT_DIR}/sub', '${CLAUDE_PROJECT_DIR}/x.json', 'x${CLAUDE_PROJECT_DIR}/x.js']) {
+        expect(projectScripts({ args: [word] }), word).toEqual([]);
+      }
+      for (const file of [null, 'unreadable', {}, [], 1, true]) expect(projectScripts(file), JSON.stringify(file)).toEqual([]);
+      expect(projectScripts([[`npx ${SCRIPT}`]])).toEqual([SCRIPT]);
+      // Words a shell line separates by more than one space are read as well.
+      expect(projectScripts({ command: `node  ${SCRIPT}  hook claude` })).toEqual([SCRIPT]);
+    });
+
+    it('says the scripts the project has not installed, and how to install the package they run', () => {
+      expect(describePluginScripts({ plugin, pluginScripts: [{ script: SCRIPT, file: null, there: true }] })).toBeNull();
+      expect(describePluginScripts({ plugin, pluginScripts: [] })).toBeNull();
+      expect(describePluginScripts({ plugin, pluginScripts: [{ script: SCRIPT, file: null, there: false }] })).toBe(
+        `${ON}, and its hooks and server run ${SCRIPT}, which this project has not installed, so Claude Code cannot start them and lets each write go ahead: ${INSTALL}`,
+      );
+      expect(describePluginScripts({ plugin, pluginScripts: [{ script: SCRIPT, file: 'a', there: true }, { script: EARLIER, file: 'a', there: false }] })).toBe(
+        `${ON}, and its hooks and server run ${EARLIER}, which this project has not installed, so Claude Code cannot start them and lets each write go ahead: ${INSTALL}; a script under @descent-vtt is the plugin's of a release before 0.22.0, which runs a package no release under @spec-family installs: update the plugin as well, from its marketplace`,
+      );
+      expect(describePluginScripts({ plugin, pluginScripts: [{ script: SCRIPT, file: 'a', there: false }, { script: '${CLAUDE_PROJECT_DIR}/b.js', file: 'b', there: false }] })).toContain(`run ${SCRIPT} and \${CLAUDE_PROJECT_DIR}/b.js, which`);
+      // Nothing read, or no plugin on, says nothing, whatever stands beside it.
+      expect(describePluginScripts({ plugin, pluginScripts: null })).toBeNull();
+      expect(describePluginScripts({ plugin: null, pluginScripts: [{ script: SCRIPT, file: null, there: false }] })).toBeNull();
+      // The earlier scope beside the scope now: both said, and the plugin to update.
+      expect(describePluginScripts({ plugin, pluginScripts: [{ script: SCRIPT, file: 'a', there: false }, { script: EARLIER, file: 'b', there: false }] })).toContain(`run ${SCRIPT} and ${EARLIER}, which this project has not installed, so Claude Code cannot start them and lets each write go ahead: ${INSTALL}; a script under @descent-vtt`);
+      // Named once, as the hooks and the server each name it.
+      expect(describePluginScripts({ plugin, pluginScripts: [{ script: SCRIPT, file: 'hooks', there: false }, { script: SCRIPT, file: 'mcp', there: false }] })).toContain(`run ${SCRIPT}, which`);
+    });
+
+    it('notes a plugin of a release after the package installed, and no other', () => {
+      expect(describePluginAhead(['0.24.0'], '0.23.0')).toBe(
+        'note: the plugin is 0.24.0, a release after the package its hooks and server run, 0.23.0 here: they are the plugin\'s release, and the package installed here answers them, so install that release of the package, npm install --save-dev @spec-family/spec-harness@0.24.0',
+      );
+      expect(describePluginAhead(['0.23.1', '0.24.0'], '0.23.0')).toContain('the plugin is 0.23.1 and 0.24.0, a release after');
+      expect(describePluginAhead(['0.23.0', '0.24.0'], '0.23.0')).toContain('the plugin is 0.24.0, a release after');
+      // A release candidate of the plugin's release is behind it.
+      expect(describePluginAhead(['0.24.0'], '0.24.0-rc.1')).toContain('the plugin is 0.24.0, a release after the package its hooks and server run, 0.24.0-rc.1 here');
+      for (const [versions, installed] of [[['0.23.0'], '0.23.0'], [['0.22.0'], '0.23.0'], [['0.24.0'], null], [['0.24.0'], 'x'], [['a1b2c3d4e5f6', 'unknown'], '0.23.0'], [[], '0.23.0']] as const) {
+        expect(describePluginAhead(versions, installed), `${versions.join(',')} ${installed}`).toBeNull();
+      }
+    });
   });
 });
 
@@ -2406,6 +2520,81 @@ describe("the lines 0.21.0 and earlier wrote, with the script of the scope the f
       expect(describePlugin({ kind: 'earlier', file: '.spec-brief.json' })).toBe(
         `.spec-brief.json names spec-harness's plugin "${NAME}", by the name of this package's releases up to 0.21.0: spec-brief loads it from @descent-vtt/spec-harness while that is installed, and once it is not, its lint and its archive stop at exit 2, the plugin not loaded. spec-harness init --write names "${PLUGIN}" in its place`,
       );
+    });
+  });
+
+  describe("in spec-brief's $schema", () => {
+    const PACKAGE = './node_modules/@descent-vtt/spec-brief/schema.json';
+    const MAIN = 'https://raw.githubusercontent.com/DescentVTT/spec-brief/main/schema.json';
+
+    it('names the schema in the installed package, where spec-brief init wrote either earlier place, in the same place in the file', () => {
+      expect(SPEC_BRIEF_SCHEMA).toBe('./node_modules/@spec-family/spec-brief/schema.json');
+      for (const earlier of [PACKAGE, MAIN]) {
+        const merged = mergeSpecBrief({ $schema: earlier, briefs: 'b', plugins: [PLUGIN] });
+        expect(merged, earlier).toEqual({ $schema: SPEC_BRIEF_SCHEMA, briefs: 'b', plugins: [PLUGIN] });
+        expect(Object.keys(merged ?? {}), earlier).toEqual(['$schema', 'briefs', 'plugins']);
+        expect(namesEarlierSchema({ $schema: earlier }), earlier).toBe(true);
+      }
+      expect(mergeSpecBrief({ briefs: 'b', $schema: PACKAGE, plugins: ['@descent-vtt/spec-harness/spec-brief-plugin'] }, 'main')).toEqual({
+        briefs: 'b',
+        $schema: SPEC_BRIEF_SCHEMA,
+        plugins: [PLUGIN],
+        archiving: { base: 'main' },
+      });
+    });
+
+    it("leaves a schema anywhere else, and one already where it is now, as it is", () => {
+      for (const schema of [SPEC_BRIEF_SCHEMA, './node_modules/@descent-vtt/spec-brief/schema.json.bak', 'node_modules/@descent-vtt/spec-brief/schema.json', './schema.json', 1, null]) {
+        expect(mergeSpecBrief({ $schema: schema, plugins: [PLUGIN] }), String(schema)).toBeNull();
+        expect(namesEarlierSchema({ $schema: schema }), String(schema)).toBe(false);
+      }
+      expect(namesEarlierSchema({})).toBe(false);
+      expect(mergeSpecBrief({ $schema: './x.json' })).toEqual({ $schema: './x.json', plugins: [PLUGIN] });
+    });
+
+    it('is said with where the schema is now, and why the earlier place reads as none', () => {
+      expect(SCHEMA_MOVED).toBe(
+        `name spec-brief's schema "./node_modules/@spec-family/spec-brief/schema.json" in "$schema", where spec-brief's init wrote its place before the family moved to @spec-family on 2026-10-26, which an editor cannot read once @descent-vtt/spec-brief is uninstalled`,
+      );
+    });
+  });
+
+  describe("in .spec-harness.json's tools", () => {
+    const said = (word: string, runs: string): string =>
+      `"tools.spec-guard" in .spec-harness.json runs ${word}, a script of @descent-vtt/spec-guard, the family's name until 2026-10-26, ${runs}: name node_modules/@spec-family/spec-guard/bin/spec-guard.js in its place, or take the entry out and the harness runs the one installed in the project`;
+    const THERE = 'which runs while that package is installed, and not once it is uninstalled';
+    const GONE = 'which is not there, so the harness cannot run it';
+
+    it('says a command that runs a script of the earlier scope, and whether the script is there', () => {
+      const word = 'node_modules/@descent-vtt/spec-guard/bin/spec-guard.js';
+      const asked: string[] = [];
+      expect(
+        earlierTool('spec-guard', ['node', word, '--quiet'], (path) => {
+          asked.push(path);
+          return true;
+        }),
+      ).toEqual({ gone: false, detail: said(word, THERE) });
+      expect(asked).toEqual([word]);
+      expect(earlierTool('spec-guard', ['node', word], () => false)).toEqual({ gone: true, detail: said(word, GONE) });
+    });
+
+    it('reads the path as a shell, Windows or an absolute path spells it', () => {
+      for (const word of ['./node_modules/@descent-vtt/spec-guard/bin/spec-guard.js', 'node_modules\\@descent-vtt\\spec-guard\\bin\\spec-guard.js', '/repo/node_modules/@descent-vtt/spec-guard/bin/spec-guard.js', 'C:\\repo\\node_modules\\@descent-vtt\\x']) {
+        expect(earlierTool('spec-guard', ['node', word], () => false), word).toEqual({ gone: true, detail: said(word, GONE) });
+      }
+    });
+
+    it('says nothing of a command that runs no such script', () => {
+      for (const command of [
+        ['node', 'node_modules/@spec-family/spec-guard/bin/spec-guard.js'],
+        ['node', 'vendor/node_modules-@descent-vtt/x.js'],
+        ['node', 'my_node_modules/@descent-vtt/spec-guard/bin/spec-guard.js'],
+        ['node', 'node_modules/@descent-vttx/spec-guard.js'],
+        ['npx', '--no-install', '@descent-vtt/spec-guard'],
+        [],
+      ]) {
+        expect(earlierTool('spec-guard', command, () => false), command.join(' ')).toBeNull();
+      }
     });
   });
 

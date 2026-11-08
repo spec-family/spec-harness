@@ -13,6 +13,36 @@ cannot turn a run red. The family's policy is
 
 ### Changed
 
+- **`doctor` fails a plugin-only project that has not installed the
+  package.** The Claude Code plugin's hooks and server run
+  `${CLAUDE_PROJECT_DIR}/node_modules/@spec-family/spec-harness/bin/spec-harness.js`,
+  so in a project without the package Claude Code cannot start them and
+  lets each write go ahead, and `doctor` exited 0. It now reads what the
+  plugin runs, from the `hooks/hooks.json` and `.mcp.json` of each version
+  Claude Code has cached, or the script every release under `@spec-family`
+  runs where none is, and exits 1 where that script is not installed, with
+  `npm install --save-dev @spec-family/spec-harness`. A plugin of a release
+  after the package installed is a note. The project's install stays the
+  one way in: its lockfile pins the release the siblings agree on
+  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md)).
+  Upgrading: install the package in each project the plugin guards.
+- **On a CI runner `doctor` does not require the plugin.** Where `CI` is
+  set, as GitHub Actions and GitLab CI set it, and no cache holds the
+  plugin, it is neither looked for nor counted as wiring, Claude Code's
+  release is not asked for it, and `--strict` fails nothing for it, where a
+  plugin-only project's `doctor --strict` failed on every runner.
+  `--format json` has `claudeCode.presence.state` `unchecked` there, and
+  `claudeCode.pluginVersions` and `claudeCode.pluginScripts` everywhere.
+- **`doctor` reads a command `tools` names for the earlier scope's
+  script.** A command in `.spec-harness.json` that runs
+  `node_modules/@descent-vtt/<name>/...`, the family's name until
+  2026-10-26, runs while that package is installed and not once it is
+  uninstalled, and `doctor` said nothing of it, its version not being
+  checked. It now says so on the sibling's row, with what to name in its
+  place, and exits 1 where the script is not there
+  ([ADR-0002](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0002-siblings-through-their-command-lines.md)).
+  Upgrading: name `node_modules/@spec-family/<name>/bin/<name>.js`, or take
+  the entry out and the harness runs the one installed in the project.
 - **`doctor` fails for an empty `--brief` or `--base`.** It said them in
   its report and exited 0, so `doctor --brief "$ID"` with the variable not
   set passed. The report is as it was; the exit is 1
@@ -24,6 +54,30 @@ cannot turn a run red. The family's policy is
 
 ### Fixed
 
+- **`init --write` moves spec-brief's `$schema`.** Where
+  `.spec-brief.json` names the schema where spec-brief's `init` wrote it
+  before the move, `./node_modules/@descent-vtt/spec-brief/schema.json` or
+  the file on the earlier repository's main, `init` names
+  `./node_modules/@spec-family/spec-brief/schema.json` in its place, as it
+  names the spec-brief plugin by its name now. An editor read neither once
+  that package was uninstalled
+  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md)).
+- **`audit`'s hint where spec-brief's configuration names the plugin by
+  its earlier name.** For a protected file a signed ruling allows and the
+  archive refused, `audit` advised adding
+  `@spec-family/spec-harness/spec-brief-plugin` to `plugins` where the
+  configuration named `@descent-vtt/spec-harness/spec-brief-plugin`, which
+  spec-brief loads from the earlier package, and beside which it refuses a
+  second plugin of the same name. It now says the configuration names the
+  earlier name, and that `init --write` names the plugin in its place.
+- **The plugin's version is written once, in `.claude-plugin/plugin.json`.**
+  The marketplace entry named it too, which Claude Code reads after the
+  manifest's and `claude plugin validate` warns of; the entry names none
+  now, and the release check holds it so
+  ([ADR-0011](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0011-releases-are-staged-by-ci.md)).
+- The development dependencies' lockfile takes the releases of `fast-uri`,
+  `zod` and `qs` that `npm audit` names as fixed, and the override of
+  `qs` asks for 6.17.1 or later. None is installed with the package.
 - **`doctor` says a line whose script it cannot look for**: a word a shell
   reads, a relative path, or a name a program finds. It passed such a line
   over as one whose script is there; it is said now, failing nothing.
@@ -33,6 +87,17 @@ cannot turn a run red. The family's policy is
   `package.json`. It wrote its lines and said nothing.
 - One second is said as "1 second", in `doctor`'s note of an entry's
   `timeout` and in a probe's timeout, where it was "1 seconds".
+
+### Documentation
+
+- **What a ruling proves.** The README's section on rulings and ADR-0006
+  say that a ruling which counts proves the agent did not sign it, a key
+  the base branch's allowed-signers file lists having signed it, and a
+  FIDO2 key needing a person's touch, and that it is not two-person review
+  or separation of duties: nothing checks that the signer is someone other
+  than the brief's author or whoever committed the round's work. Nothing
+  that is checked changes
+  ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md)).
 
 ## 0.23.0
 

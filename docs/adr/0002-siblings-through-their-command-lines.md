@@ -946,6 +946,22 @@ no sibling here, and is told so as it would be with none; a command it
 named under `tools` with the earlier path runs as named, as before. The
 minimums move with the scope (ADR-0011, amended the same day).
 
+*Amended 2026-11-08.* **`doctor` reads a command `tools` names with the
+earlier path.** The amendment above left such a command to run as named,
+and `doctor` said nothing of it, since it checks no version of a command
+`tools` names: it ran while the earlier package was installed, and once
+that was uninstalled every command that runs the sibling failed, with
+`doctor` silent. A word of the command that is a path into
+`node_modules/@descent-vtt/`, as a shell or Windows spells it, is now said
+on the sibling's row, with what to name in its place,
+`node_modules/@spec-family/<tool>/bin/<tool>.js`, or the entry taken out so
+that the install is found. Where that path, read from the root, is not a
+file, `doctor` exits 1, as for a line of the hook whose script is gone
+(ADR-0012, amended 2026-10-26). The command is still run as named, and
+nothing else of it is read. `--format json` has the sentence in the row's
+`detail`; no field is added. An exit code that can change for a tree that
+passed is a minor release (spec-core's ADR-0009).
+
 ## Consequences
 
 Each tool is released, pinned and dropped on its own, and the harness adds no
