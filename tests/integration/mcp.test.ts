@@ -5,10 +5,10 @@ import { pathToFileURL } from 'node:url';
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { INSTRUCTIONS, prompts, rootsClient, tools, type Roots } from '../../src/server.js';
+import { INSTRUCTIONS, prompts, rootsClient, tools, toolsOpeningAgain, type Roots } from '../../src/server.js';
 import { createMcpServer, type JsonObject, type ToolDefinition } from '../../src/vendor/spec-core/jsonrpc/index.js';
 import { openWorkspace, parseOptions, version, type Workspace } from '../../src/workspace.js';
-import { BIN, brief, BRIEF_FILE, cleanup, cli, install, repository, ROOT, temp, type Repository } from './helpers.js';
+import { BIN, brief, BRIEF_FILE, cleanup, cli, install, repository, ROOT, siblings, temp, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -664,6 +664,52 @@ describe('the mcp command', () => {
     const [initialized, called] = answers(served.stdout);
     expect(initialized?.result.serverInfo).toEqual({ name: 'spec-harness', version: version() });
     expect(called?.result.structuredContent?.decisions.map((d) => d.verdict)).toEqual(['deny']);
+  });
+
+  it('starts where the configuration does not load, lists its tools, and has each say why it cannot answer (ADR-0008, amended 2026-11-08)', async () => {
+    const broken = repository({ [BRIEF_FILE]: brief() });
+    broken.write('.spec-harness.json', '{ "outOfScope": "sideways" }\n');
+    const listing = `${[
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } },
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'check_path', arguments: { paths: ['src/db/schema.ts'] } } },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join('\n')}\n`;
+    const served = await cli(['mcp'], broken.root, { env: { CLAUDE_PROJECT_DIR: broken.root }, stdin: listing });
+    expect(served).toMatchObject({ code: 0, stderr: '' });
+    const said = served.stdout
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => JSON.parse(line) as { id: number; result: { tools?: { name: string }[]; isError?: boolean; content?: { text: string }[] } })
+      .sort((a, b) => a.id - b.id);
+    expect(said[1]?.result.tools?.map((tool) => tool.name)).toEqual(['start_round', 'check_path', 'request_escalation', 'audit_round', 'list_rounds']);
+    // A root that is no work tree still stops it, as it stops every command.
+    expect((await cli(['mcp'], temp(), { env: { CLAUDE_PROJECT_DIR: temp() }, stdin: listing })).code).toBe(2);
+    expect(said[2]?.result).toMatchObject({
+      isError: true,
+      content: [{ text: 'spec-harness failed: .spec-harness.json: "outOfScope" must be "warn", "ask" or "deny", so no tool can answer until it loads; it is read again at every call' }],
+    });
+  });
+
+  it('reads the configuration again at every call where it did not load, and answers once it is mended', async () => {
+    const mended = repository({ [BRIEF_FILE]: brief() });
+    mended.git('checkout', '-q', '-b', 'brief/001-rotate');
+    mended.write('.spec-harness.json', '{ "outOfScope": "sideways" }\n');
+    const quiet = { write: () => true };
+    const io = { stdout: quiet, stderr: quiet, cwd: mended.root, env: {} };
+    const check = toolsOpeningAgain(() => openWorkspace(parseOptions(['mcp']), io), mended.root, {}).find((tool) => tool.descriptor.name === 'check_path')!;
+    await expect(check.call({ paths: ['src/db/schema.ts'] })).rejects.toThrow(
+      '.spec-harness.json: "outOfScope" must be "warn", "ask" or "deny", so no tool can answer until it loads; it is read again at every call',
+    );
+    mended.write('.spec-harness.json', `${JSON.stringify({ base: 'main', tools: siblings() })}\n`);
+    const answered = await check.call({ paths: ['src/db/schema.ts'] });
+    expect(answered.isError).toBeUndefined();
+    expect(answered.text).toContain('src/db/schema.ts');
+    // An error that is not the configuration's is the tool's error as it is.
+    const failing = toolsOpeningAgain(() => Promise.reject(new Error('git is gone')), mended.root, {}).find((tool) => tool.descriptor.name === 'list_rounds')!;
+    await expect(failing.call({})).rejects.toThrow(/^git is gone$/);
   });
 
   it('answers for --root over CLAUDE_PROJECT_DIR, and for where it runs when that is empty', async () => {

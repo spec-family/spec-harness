@@ -2775,6 +2775,28 @@ and `npm ci` there installs nothing that brings the script.
   keeps it with a note, as `doctor` notes it: the hook 0.22.0 wrote guards
   as this one does, and differs in what it says.
 
+*Amended 2026-11-08.* **The line as a session starts, and a path with a
+`..`, say what is held and why, no broader than the hook holds it.**
+
+- **As a session starts.** The line said every write of the session was
+  held, where the hook holds none to a file outside every work tree of the
+  repository: a name of the brief that is none, a configuration that does
+  not load and a spec-brief that cannot answer each leave such a write to
+  go ahead (`decisionsFor`, `mending`). The report at a turn's end said so
+  already, "every write is held but one to a file outside every work tree
+  of the repository", and the line now says what that report says. A git
+  that does not answer within its time, and an error nothing expected, hold
+  such a write too, and are said as before.
+- **A path with a `..`.** `outsideEvery` reads no path with a `..` as one
+  outside every work tree, though it reads as one both ways: a link before
+  the `..` can lead back into a work tree, which is why such a path is held
+  as the amendment of 2026-10-24 has it. Where the hook holds every write in
+  a work tree, for a brief's name that is none, such a path was held in the
+  brief's words, which decide no file outside the repository. It is now held
+  in its own: that the path has a `..` and reads as outside, why it is held
+  all the same, and to write it without the `..`. `check_path` answers each
+  such path so, and the hook says it where every path of the write is one.
+
 ## Consequences
 
 An agent that writes through a shell passes the guard and is caught at the

@@ -234,3 +234,25 @@ export function decideWritten(read: Decision, written: GuardInput): Decision {
 export function heldBy(path: string, problem: string): Decision {
   return { path, verdict: 'deny', reason: 'held', because: [], message: problem, hint: 'fix the brief or the branch before writing' };
 }
+
+/** What the hook says next of a path with a `..` that it holds as one that may be in a work tree. */
+export const DOTS_MEND = 'write the path without its .., as it resolves';
+
+/**
+ * A path with a `..` in it that reads as a file outside every work tree of
+ * the repository, held where the hook holds every write in one: a link
+ * before the `..` can lead back into a work tree, so the hook does not take
+ * the path for one outside (fs.ts, dotsOutside). Refused in its own words,
+ * where it was refused in the words of `problem`, which decides no file
+ * outside the repository.
+ */
+export function heldForDots(path: string, problem: string): Decision {
+  return {
+    path,
+    verdict: 'deny',
+    reason: 'held',
+    because: [],
+    message: `${path} has a .. in it and reads as a file outside every work tree of the repository, but a link before the .. can lead back into one, so it is held as a write in the repository is while ${problem}`,
+    hint: DOTS_MEND,
+  };
+}

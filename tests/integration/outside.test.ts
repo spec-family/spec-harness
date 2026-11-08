@@ -160,10 +160,24 @@ describe('a write outside every work tree of the repository', () => {
     unknown.make(repo);
     const outside = temp();
     mkdirSync(join(outside, 'sub'));
-    await held(ask(repo, 'PreToolUse', { file_path: [outside, 'sub', '..', 'notes.md'].join(sep) }), unknown.said, 'a `..` outside');
-    // One path of the call with a `..` in it is enough.
-    await held(ask(repo, 'PreToolUse', { file_path: join(outside, 'notes.md'), path: [outside, 'sub', '..', 'other.md'].join(sep) }), unknown.said, 'one of two');
+    // Held in its own words, with how to write it, where it was held in the brief's (ADR-0005, amended 2026-11-08).
+    const dotted = [outside, 'sub', '..', 'notes.md'].join(sep);
+    const own = (path: string) =>
+      `spec-harness: ${path} has a .. in it and reads as a file outside every work tree of the repository, but a link before the .. can lead back into one, so it is held as a write in the repository is while the branch names brief 999, and spec-brief knows no such brief. Write the path without its .., as it resolves.\n`;
+    expect(await ask(repo, 'PreToolUse', { file_path: dotted })).toEqual({ code: 2, stdout: '', stderr: own(dotted) });
+    // One path of the call with a `..` in it is enough, and it alone is named.
+    const other = [outside, 'sub', '..', 'other.md'].join(sep);
+    expect(await ask(repo, 'PreToolUse', { file_path: join(outside, 'notes.md'), path: other })).toEqual({ code: 2, stdout: '', stderr: own(other) });
+    // Two such paths are both named, as a list.
+    expect(await ask(repo, 'PreToolUse', { file_path: dotted, path: other })).toEqual({ code: 2, stdout: '', stderr: own(`${dotted}, ${other}`) });
+    // Beside a path in the work tree it is the brief's problem that holds the write, as before.
+    await held(ask(repo, 'PreToolUse', { file_path: join(repo.root, 'README.md'), path: other }), unknown.said, 'beside one inside');
+    // And a path with a `..` that reads as one in the work tree is one in it, held for the brief.
+    await held(ask(repo, 'PreToolUse', { file_path: [repo.root, 'src', '..', 'README.md'].join(sep) }), unknown.said, 'a `..` inside');
     expect(await ask(repo, 'PreToolUse', { file_path: join(outside, 'notes.md') })).toEqual(PASSED);
+    // Where nothing holds the writes in the work tree, such a path is one outside the repository, and goes ahead.
+    repo.git('checkout', '-q', 'main');
+    expect(await ask(repo, 'PreToolUse', { file_path: dotted })).toEqual(PASSED);
   });
 
   // Windows lets an account make a link to a directory as a junction, which Windows itself reads after a `..`.

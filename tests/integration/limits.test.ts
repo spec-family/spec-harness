@@ -49,7 +49,7 @@ describe('spec-brief that does not answer (ADR-0002)', () => {
 
   it('is said as a session starts, which it does not keep from starting', async () => {
     const repo = project('brief/001-rotate');
-    const said = `spec-harness: ${STOPPED}, so every write of this session is held until it is mended; spec-harness doctor says more`;
+    const said = `spec-harness: ${STOPPED}, so every write of this session is held until it is mended, but one to a file outside every work tree of the repository; spec-harness doctor says more`;
     expect(await cli(['hook', 'claude'], repo.root, { stdin: question(repo.root, 'SessionStart') })).toEqual({
       code: 0,
       stdout: `${JSON.stringify({ systemMessage: said, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: said } })}\n`,

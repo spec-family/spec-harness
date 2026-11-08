@@ -166,3 +166,15 @@ was:
 - **`start_round`, `request_escalation` and `audit_round`** need a brief,
   and answer a tool error where none is named, as before: each acts on a
   round, not on a write.
+
+*Amended 2026-11-08.* **The server starts where the configuration does not
+load.** It opened the work tree as it started and ended with exit 2 where
+`.spec-harness.json` did not load, so Claude Code listed none of its tools
+and said only that it could not connect, which says nothing of the file. It
+now starts, lists its tools and prompts as always, and each tool opens the
+work tree again as it is called: where the configuration still does not
+load, the call is the tool's error, the file's own message and that no tool
+answers until it loads; once the file is mended, the next call answers.
+Where the work tree opened as the server started, it is kept for every
+call, as before. A root that is no work tree still stops the server, as it
+stops every command.

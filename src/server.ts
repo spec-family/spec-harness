@@ -12,12 +12,13 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { describeMeasured } from './audit.js';
+import { ConfigError } from './config.js';
 import { findActive, type ActiveBrief } from './briefs.js';
 import { briefIdFromBranch } from './branch.js';
 import { titleOf } from './context.js';
 import { createReader } from './reader.js';
-import { outsideEvery, realSpelling } from './fs.js';
-import { heldBy, type Decision } from './guard.js';
+import { dotsOutside, outsideEvery, realSpelling } from './fs.js';
+import { heldBy, heldForDots, type Decision } from './guard.js';
 import { buildContext, checkPaths, raiseEscalation, runAudit } from './round.js';
 import type { EscalationOption } from './rulings.js';
 import type { BriefRow } from './types.js';
@@ -296,16 +297,27 @@ async function asTheHook(workspace: Workspace, env: CliIO['env'], id: string | u
   // Decided by no brief, a path outside is decided as outside the
   // repository, and one inside is held, named as the repository names it.
   const decided = await checkPaths(workspace, null, undefined, paths, cwd, reader, base);
-  return decided.map((decision, at) => (outside[at] ? decision : heldBy(decision.path, problem)));
+  const dotted = paths.map((path) => dotsOutside(path, workspace.root, workspace.commonDir, cwd));
+  return decided.map((decision, at) => (outside[at] ? decision : dotted[at] ? heldForDots(decision.path, problem) : heldBy(decision.path, problem)));
 }
 
 export function tools(workspace: Workspace, env: CliIO['env'], roots: Roots = NO_ROOTS): ToolDefinition[] {
+  return served(async () => workspace, workspace.cwd, env, roots);
+}
+
+/**
+ * The tools, each asking `open` for the work tree as it is called: the one
+ * opened as the server started, or, where the configuration did not load
+ * then, the work tree opened again, which says why where it still does
+ * not. `cwd` is where the server runs.
+ */
+function served(open: () => Promise<Workspace>, cwd: string, env: CliIO['env'], roots: Roots): ToolDefinition[] {
   const readOnly = { readOnlyHint: true, idempotentHint: true, openWorldHint: false };
   // A tool writes nothing to the server's streams, so these are never
   // written to, and their mutants are equivalent: what a tool says is its
   // answer.
   const quiet = { write: (): boolean => true };
-  const io: CliIO = { stdout: quiet, stderr: quiet, cwd: workspace.cwd, env };
+  const io: CliIO = { stdout: quiet, stderr: quiet, cwd, env };
   return [
     {
       descriptor: {
@@ -317,6 +329,7 @@ export function tools(workspace: Workspace, env: CliIO['env'], roots: Roots = NO
         annotations: readOnly,
       },
       async call(args: JsonObject): Promise<ToolOutcome> {
+        const workspace = await open();
         const unknown = unknownArguments(args, ['brief', 'base', 'directory']);
         if (unknown) return unknown;
         const base = baseOf(args);
@@ -369,6 +382,7 @@ export function tools(workspace: Workspace, env: CliIO['env'], roots: Roots = NO
         annotations: readOnly,
       },
       async call(args: JsonObject): Promise<ToolOutcome> {
+        const workspace = await open();
         const unknown = unknownArguments(args, ['paths', 'brief', 'base', 'directory']);
         if (unknown) return unknown;
         const given = pathsOf(args);
@@ -417,6 +431,7 @@ export function tools(workspace: Workspace, env: CliIO['env'], roots: Roots = NO
         annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
       },
       async call(args: JsonObject): Promise<ToolOutcome> {
+        const workspace = await open();
         const unknown = unknownArguments(args, ['paths', 'reason', 'options', 'recommendation', 'brief', 'directory']);
         if (unknown) return unknown;
         // Every part of the memo before anything is written: a person rules
@@ -454,6 +469,7 @@ export function tools(workspace: Workspace, env: CliIO['env'], roots: Roots = NO
         annotations: readOnly,
       },
       async call(args: JsonObject): Promise<ToolOutcome> {
+        const workspace = await open();
         const unknown = unknownArguments(args, ['brief', 'base', 'directory']);
         if (unknown) return unknown;
         const base = baseOf(args);
@@ -486,6 +502,7 @@ export function tools(workspace: Workspace, env: CliIO['env'], roots: Roots = NO
         annotations: readOnly,
       },
       async call(args: JsonObject): Promise<ToolOutcome> {
+        const workspace = await open();
         const unknown = unknownArguments(args, []);
         if (unknown) return unknown;
         const live = (await workspace.siblings.briefs()).filter((brief) => brief.phase === 'live');
@@ -530,16 +547,42 @@ export function prompts(): PromptDefinition[] {
   }));
 }
 
+/**
+ * The tools where the configuration did not load as the server started:
+ * each opens the work tree again as it is called, and a configuration that
+ * still does not load is said, with what that holds, as the tool's error.
+ * Once the file is mended, the next call answers (ADR-0008).
+ */
+export function toolsOpeningAgain(open: () => Promise<Workspace>, cwd: string, env: CliIO['env'], roots: Roots = NO_ROOTS): ToolDefinition[] {
+  const again = async (): Promise<Workspace> => {
+    try {
+      return await open();
+    } catch (error) {
+      if (error instanceof ConfigError) throw new Error(`${error.message}, so no tool can answer until it loads; it is read again at every call`);
+      throw error;
+    }
+  };
+  return served(again, cwd, env, roots);
+}
+
 export async function mcpCommand(options: Options, io: CliIO): Promise<number> {
   // Claude Code starts a plugin's server in the plugin's directory, and names
   // the project in CLAUDE_PROJECT_DIR; the server answers for the project.
-  const workspace = await openWorkspace({ ...options, root: options.root ?? (io.env['CLAUDE_PROJECT_DIR'] || undefined) }, io);
+  const open = (): Promise<Workspace> => openWorkspace({ ...options, root: options.root ?? (io.env['CLAUDE_PROJECT_DIR'] || undefined) }, io);
+  const opened = await open().catch((error: unknown) => {
+    // A configuration that does not load stopped the server, and Claude
+    // Code then lists none of its tools and says only that it could not
+    // connect. It starts, and each tool says why it cannot answer, reading
+    // the file again, so that a mended file is read at the next call.
+    if (error instanceof ConfigError) return null;
+    throw error;
+  });
   const write = (line: string): void => {
     io.stdout.write(`${line}\n`);
   };
   // The work tree a session is in, where its client names it (ADR-0008).
   const roots = rootsClient(write);
-  const handle = createMcpServer({ name: 'spec-harness', version: version(), instructions: INSTRUCTIONS, tools: tools(workspace, io.env, roots.ask), prompts: prompts() });
+  const handle = createMcpServer({ name: 'spec-harness', version: version(), instructions: INSTRUCTIONS, tools: opened === null ? toolsOpeningAgain(open, io.cwd, io.env, roots.ask) : tools(opened, io.env, roots.ask), prompts: prompts() });
   // A session handed over whole, as a test hands it, is served as a client
   // would stream it on stdin. Only the built command line serves
   // process.stdin, and the suite spawns it from dist/, outside the sweep

@@ -41,6 +41,8 @@ function said(line: string) {
 }
 
 const HELD = 'so every write of this session is held until it is mended';
+/** The writes a session's problem does not hold: one outside every work tree goes ahead, as the report at a turn's end says (ADR-0005). */
+const OUTSIDE = 'but one to a file outside every work tree of the repository';
 
 describe('the hook as a session starts', () => {
   it('says nothing where all is well, however the session starts', async () => {
@@ -57,16 +59,16 @@ describe('the hook as a session starts', () => {
   it('says a brief named that spec-brief does not list, by what names it, in the words a write is held with', async () => {
     const unknown = project('brief/999-nowhere');
     for (const source of ['startup', 'resume', 'compact']) {
-      expect(await start(unknown, { source }), source).toEqual(said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}: fix the brief or the branch before writing; spec-harness doctor says more`));
+      expect(await start(unknown, { source }), source).toEqual(said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}, ${OUTSIDE}: fix the brief or the branch before writing; spec-harness doctor says more`));
     }
     const plain = project();
-    expect(await start(plain, { line: ['--brief', '404'] })).toEqual(said(`the flag names brief 404, and spec-brief knows no such brief, ${HELD}: fix the brief or the branch before writing; spec-harness doctor says more`));
-    expect(await start(plain, { env: { SPEC_BRIEF: '404' } })).toEqual(said(`the environment names brief 404, and spec-brief knows no such brief, ${HELD}: fix the brief or the branch before writing; spec-harness doctor says more`));
+    expect(await start(plain, { line: ['--brief', '404'] })).toEqual(said(`the flag names brief 404, and spec-brief knows no such brief, ${HELD}, ${OUTSIDE}: fix the brief or the branch before writing; spec-harness doctor says more`));
+    expect(await start(plain, { env: { SPEC_BRIEF: '404' } })).toEqual(said(`the environment names brief 404, and spec-brief knows no such brief, ${HELD}, ${OUTSIDE}: fix the brief or the branch before writing; spec-harness doctor says more`));
     // A session whose directory is in no work tree is the project's, which Claude Code names.
     const elsewhere = temp();
-    expect(await cli(['hook', 'claude'], unknown.root, { stdin: question(elsewhere), env: { CLAUDE_PROJECT_DIR: unknown.root } })).toEqual(said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}: fix the brief or the branch before writing; spec-harness doctor says more`));
+    expect(await cli(['hook', 'claude'], unknown.root, { stdin: question(elsewhere), env: { CLAUDE_PROJECT_DIR: unknown.root } })).toEqual(said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}, ${OUTSIDE}: fix the brief or the branch before writing; spec-harness doctor says more`));
     // Started in another directory, the hook reads the project Claude Code names.
-    expect(await cli(['hook', 'claude'], temp(), { stdin: question(unknown.root), env: { CLAUDE_PROJECT_DIR: unknown.root } })).toEqual(said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}: fix the brief or the branch before writing; spec-harness doctor says more`));
+    expect(await cli(['hook', 'claude'], temp(), { stdin: question(unknown.root), env: { CLAUDE_PROJECT_DIR: unknown.root } })).toEqual(said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}, ${OUTSIDE}: fix the brief or the branch before writing; spec-harness doctor says more`));
     // And the write it would hold is held so.
     const write = JSON.stringify({ cwd: unknown.root, hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: join(unknown.root, 'src', 'a.ts') } });
     expect(await cli(['hook', 'claude'], unknown.root, { stdin: write, env: { CLAUDE_PROJECT_DIR: unknown.root } })).toEqual({
@@ -77,7 +79,7 @@ describe('the hook as a session starts', () => {
   });
 
   it('reads the work tree a write of the session is decided in, a worktree of the project where the session works in one (ADR-0005)', async () => {
-    const UNKNOWN = said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}: fix the brief or the branch before writing; spec-harness doctor says more`);
+    const UNKNOWN = said(`the branch names brief 999, and spec-brief knows no such brief, ${HELD}, ${OUTSIDE}: fix the brief or the branch before writing; spec-harness doctor says more`);
     const repo = project();
     const unknown = join(repo.root, '.claude', 'worktrees', 'u');
     repo.git('worktree', 'add', '-q', '-b', 'brief/999-u', unknown);
@@ -105,17 +107,17 @@ describe('the hook as a session starts', () => {
     broken.write('.spec-harness.json', '{ "outOfScope": "sideways" }\n');
     // But for a write to the file itself, which may mend it (ADR-0005, amended 2026-10-19).
     expect(await start(broken)).toEqual(
-      said(`.spec-harness.json: "outOfScope" must be "warn", "ask" or "deny", ${HELD}, but for a write to ${join(broken.root, '.spec-harness.json')} itself, which is not checked; spec-harness doctor says more`),
+      said(`.spec-harness.json: "outOfScope" must be "warn", "ask" or "deny", ${HELD}, ${OUTSIDE} and one to ${join(broken.root, '.spec-harness.json')} itself, which is not checked; spec-harness doctor says more`),
     );
     const missing = project('brief/001-rotate', false);
     expect(await start(missing)).toEqual(
-      said(`spec-brief is not installed here: npm install --save-dev @spec-family/spec-brief, or name its command under "tools" in .spec-harness.json, ${HELD}; spec-harness doctor says more`),
+      said(`spec-brief is not installed here: npm install --save-dev @spec-family/spec-brief, or name its command under "tools" in .spec-harness.json, ${HELD}, ${OUTSIDE}; spec-harness doctor says more`),
     );
     // With no brief named, no write runs spec-brief, and there is nothing to say.
     expect(await start(project('main', false))).toEqual({ code: 0, stdout: '', stderr: '' });
     const old = project('brief/001-rotate', false);
     installFake(old.root, 'spec-brief', JSON.stringify({ version: '0.1.0' }));
-    expect(await start(old)).toEqual(said(`spec-brief 0.1.0 is installed here; spec-harness needs 0.12.0 or later: npm install --save-dev @spec-family/spec-brief@latest, ${HELD}; spec-harness doctor says more`));
+    expect(await start(old)).toEqual(said(`spec-brief 0.1.0 is installed here; spec-harness needs 0.12.0 or later: npm install --save-dev @spec-family/spec-brief@latest, ${HELD}, ${OUTSIDE}; spec-harness doctor says more`));
   });
 
   it("says what is wrong with the hook's own line, in the words it says it with before a write, and exits 0", async () => {

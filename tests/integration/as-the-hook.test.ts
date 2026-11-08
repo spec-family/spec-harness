@@ -11,8 +11,8 @@
  * the hook would pass. One table of cases holds the two to one answer.
  */
 
-import { rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -147,6 +147,30 @@ describe('check_path and the hook', () => {
       env: { CLAUDE_PROJECT_DIR: repo.root },
     });
     expect(byLine).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: the flag names brief 404, and spec-brief knows no such brief. Fix the brief or the branch before writing.\n' });
+  });
+
+  it('holds a path with a `..` that reads as outside every work tree in its own words, the hook and check_path alike (ADR-0005, amended 2026-11-08)', async () => {
+    const repo = onBranch({}, 'brief/999-nowhere')();
+    const outside = temp();
+    mkdirSync(join(outside, 'sub'));
+    const dotted = [outside, 'sub', '..', 'notes.md'].join(sep);
+    const own = `${dotted} has a .. in it and reads as a file outside every work tree of the repository, but a link before the .. can lead back into one, so it is held as a write in the repository is while the branch names brief 999, and spec-brief knows no such brief`;
+    const byHook = await cli(['hook', 'claude'], repo.root, {
+      stdin: JSON.stringify({ session_id: 's', tool_use_id: 'toolu_1', cwd: repo.root, hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: dotted, content: 'x' } }),
+      env: { CLAUDE_PROJECT_DIR: repo.root },
+    });
+    expect(byHook).toEqual({ code: 2, stdout: '', stderr: `spec-harness: ${own}. Write the path without its .., as it resolves.\n` });
+    const lines = [
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } },
+      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'check_path', arguments: { paths: ['src/db/schema.ts', dotted, join(outside, 'notes.md')] } } },
+    ];
+    const served = await cli(['mcp'], repo.root, { stdin: lines.map((line) => JSON.stringify(line)).join('\n'), env: { CLAUDE_PROJECT_DIR: repo.root } });
+    const text = (JSON.parse(served.stdout.split('\n').filter((line) => line !== '')[1]!) as { result: { content: { text: string }[] } }).result.content[0]!.text;
+    expect(text.split('\n')).toEqual([
+      'deny: the branch names brief 999, and spec-brief knows no such brief. Next: fix the brief or the branch before writing',
+      `deny: ${own}. Next: write the path without its .., as it resolves`,
+      `allow: ${join(outside, 'notes.md')} is outside the repository; no brief governs it`,
+    ]);
   });
 
   it('holds a path inside in the words the hook holds a write with, and passes one outside in the same call', async () => {

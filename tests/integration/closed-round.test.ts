@@ -79,7 +79,7 @@ const startSaid = (line: string) => {
   const text = `spec-harness: ${line}`;
   return { code: 0, stderr: '', stdout: `${JSON.stringify({ systemMessage: text, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } })}\n` };
 };
-const CLOSED_START = startSaid(`${PROBLEM}, so every write of this session is held: the round is archived and ends when this branch merges, so write on the branch of a live brief; spec-harness doctor says more`);
+const CLOSED_START = startSaid(`${PROBLEM}, so every write of this session is held, but one to a file outside every work tree of the repository: the round is archived and ends when this branch merges, so write on the branch of a live brief; spec-harness doctor says more`);
 
 describe('doctor on the branch that archived its brief', () => {
   it('fails nothing for it, and says why, where the hook holds every write all the same', async () => {

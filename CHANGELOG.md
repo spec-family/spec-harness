@@ -9,6 +9,24 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Fixed
+
+- **The line as a session starts says the writes the hook lets go ahead.**
+  It said every write of the session was held, where a write to a file
+  outside every work tree of the repository goes ahead, as the report at a
+  turn's end says
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+- **The MCP server starts where the configuration does not load**, and each
+  tool says why it cannot answer, reading the file again at every call,
+  where the server stopped and Claude Code said only that it could not
+  connect
+  ([ADR-0008](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0008-one-server-for-rounds.md)).
+- **A path with a `..` that reads as outside every work tree is held in its
+  own words**, with how to write it, where the hook and `check_path` held
+  it in the words of the brief's name that is none.
+
 ## 0.23.0
 
 git's pre-commit hook takes the commit that archives the round's brief on

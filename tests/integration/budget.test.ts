@@ -8,7 +8,7 @@
  * read in seconds; the rest of the suite runs at the budget itself.
  */
 
-import { writeFileSync } from 'node:fs';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -72,9 +72,22 @@ describe("a run of Claude Code's hook, which has one budget", () => {
     expect(await hook(repo, question(repo, 'PreToolUse', { file_path: join(repo.root, 'src', 'app', 'a.ts') }))).toEqual({ code: 0, stdout: '', stderr: '' });
   });
 
+  // A git that does not answer: a script, which Windows does not start by its name.
+  it.skipIf(process.platform === 'win32')('says, as a session starts, a git that does not answer, which holds a write outside every work tree as well', async () => {
+    const repo = project(0);
+    const bin = temp();
+    writeFileSync(join(bin, 'git'), '#!/bin/sh\nexec /bin/sleep 10\n');
+    chmodSync(join(bin, 'git'), 0o755);
+    const answer = await cli(['hook', 'claude'], repo.root, { stdin: question(repo, 'SessionStart'), env: { CLAUDE_PROJECT_DIR: repo.root, PATH: bin } });
+    expect({ code: answer.code, stderr: answer.stderr }).toEqual({ code: 0, stderr: '' });
+    const said = (JSON.parse(answer.stdout) as { systemMessage: string }).systemMessage;
+    // Nothing is spared: git is asked where a write outside every work tree is, too.
+    expect(said).toMatch(/^spec-harness: git .+ did not answer within the 3 seconds the hook's run is given, and was stopped, so every write of this session is held until it is mended; spec-harness doctor says more$/);
+  });
+
   it('is said as a session starts, and at the end of a turn, which neither holds', async () => {
     const repo = project(4_000, { turnReport: true });
-    const said = `spec-harness: ${SPENT}, so every write of this session is held until it is mended; spec-harness doctor says more`;
+    const said = `spec-harness: ${SPENT}, so every write of this session is held until it is mended, but one to a file outside every work tree of the repository; spec-harness doctor says more`;
     expect(await hook(repo, question(repo, 'SessionStart'))).toEqual({ code: 0, stdout: `${JSON.stringify({ systemMessage: said, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: said } })}\n`, stderr: '' });
     expect(await hook(repo, question(repo, 'Stop'))).toEqual({ code: 0, stdout: `${JSON.stringify({ systemMessage: `spec-harness: ${SPENT}, so what the work tree holds is not reported` })}\n`, stderr: '' });
   });
