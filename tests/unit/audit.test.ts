@@ -369,6 +369,18 @@ describe('the archive', () => {
     ]);
   });
 
+  it("says to name the plugin in place of the earlier name, not beside it, where spec-brief's configuration names it so", () => {
+    const named = 'but spec-brief\'s configuration names spec-harness\'s plugin "@descent-vtt/spec-harness/spec-brief-plugin", by the name of this package\'s releases up to 0.21.0, so its archive asks that release and not the one installed here: run spec-harness init --write, which names "@spec-family/spec-harness/spec-brief-plugin" in its place, since spec-brief refuses the two side by side';
+    const refusedFile = { archive: { blocking: [refused('src/db/schema.ts')], warnings: [] }, verifiedRulings: signed };
+    expect(audit(input({ ...refusedFile, pluginLoaded: false, pluginNamedEarlier: true })).findings[0]?.hint).toBe(`ruling R-012-1, signed by person@example.com, allows it, ${named}`);
+    // Not given, or false, it is the advice to load the plugin, as before.
+    for (const pluginNamedEarlier of [false, undefined]) {
+      expect(audit(input({ ...refusedFile, pluginLoaded: false, pluginNamedEarlier })).findings[0]?.hint, String(pluginNamedEarlier)).toContain('but spec-brief does not load spec-harness\'s plugin');
+    }
+    // A plugin loaded by its name now decides over the earlier name beside it.
+    expect(audit(input({ ...refusedFile, pluginLoaded: true, pluginNamedEarlier: true })).findings[0]?.hint).toContain('and the archive still refused it');
+  });
+
   it('says where to look when spec-brief loads the plugin and refuses the file all the same', () => {
     const { findings } = audit(input({ archive: { blocking: [refused('src/db/schema.ts')], warnings: [] }, verifiedRulings: signed, pluginLoaded: true }));
     expect(findings[0]?.hint).toBe(

@@ -1627,7 +1627,7 @@ export const PLUGIN = '@spec-family/spec-harness/spec-brief-plugin';
  * could not be loaded. Read so that init names the plugin by its name now
  * in its place, and never loaded.
  */
-const EARLIER_PLUGIN = '@descent-vtt/spec-harness/spec-brief-plugin';
+export const EARLIER_PLUGIN = '@descent-vtt/spec-harness/spec-brief-plugin';
 
 /** Whether an entry of spec-brief's `plugins` names the plugin by its earlier name, alone or as `{ module, options }`. */
 function namesEarlierPlugin(entry: unknown): boolean {
@@ -1690,6 +1690,49 @@ export function loadsPlugin(config: Json, isPluginFile: (path: string) => boolea
   return Array.isArray(plugins) && plugins.some((entry) => names(entry) || (isObject(entry) && names(entry['module'])));
 }
 
+/** A word of a command that is a path into the earlier scope's install, as a shell or Windows spells one. */
+const EARLIER_SCOPE_PATH = /(?:^|[\\/])node_modules[\\/]@descent-vtt[\\/]/;
+
+/**
+ * What doctor says of the command `.spec-harness.json` gives a sibling under
+ * `tools`, where a word of it is a path into the install of the earlier
+ * scope, `node_modules/@descent-vtt/`, which no release under `@spec-family`
+ * installs or looks for: `null` where no word is. `there` says whether the
+ * path is a file, read from the root the command runs at. Such a command
+ * runs while the earlier package is installed and stops once it is not,
+ * and `gone` is whether that is now.
+ */
+export function earlierTool(name: string, command: readonly string[], there: (path: string) => boolean): { readonly detail: string; readonly gone: boolean } | null {
+  const word = command.find((part) => EARLIER_SCOPE_PATH.test(part));
+  if (word === undefined) return null;
+  const gone = !there(word);
+  const runs = gone ? 'which is not there, so the harness cannot run it' : 'which runs while that package is installed, and not once it is uninstalled';
+  return {
+    gone,
+    detail: `"tools.${name}" in .spec-harness.json runs ${word}, a script of @descent-vtt/${name}, the family's name until 2026-10-26, ${runs}: name node_modules/@spec-family/${name}/bin/${name}.js in its place, or take the entry out and the harness runs the one installed in the project`,
+  };
+}
+
+/** spec-brief's schema as its `init` writes `$schema` now: the copy in the installed package. */
+export const SPEC_BRIEF_SCHEMA = './node_modules/@spec-family/spec-brief/schema.json';
+
+/**
+ * `$schema` as spec-brief's `init` wrote it before the move to the
+ * `@spec-family` scope on 2026-10-26: the copy in the earlier package, from
+ * its release of 2026-09-26 on, and the file on its earlier repository's
+ * main before that. Neither is there for a project that installs the
+ * package by its name now, and an editor then checks the file by no schema.
+ */
+const EARLIER_SCHEMAS: readonly string[] = ['./node_modules/@descent-vtt/spec-brief/schema.json', 'https://raw.githubusercontent.com/DescentVTT/spec-brief/main/schema.json'];
+
+/** Whether spec-brief's configuration names its schema where spec-brief's `init` wrote it before the move. */
+export function namesEarlierSchema(config: Json): boolean {
+  return EARLIER_SCHEMAS.some((earlier) => earlier === config['$schema']);
+}
+
+/** What init says where it names spec-brief's schema in place of its earlier place. */
+export const SCHEMA_MOVED = `name spec-brief's schema "${SPEC_BRIEF_SCHEMA}" in "$schema", where spec-brief's init wrote its place before the family moved to @spec-family on 2026-10-26, which an editor cannot read once @descent-vtt/spec-brief is uninstalled`;
+
 /** Whether spec-brief's configuration names the base its archive measures a round from. */
 export function measuresArchive(config: Json): boolean {
   const archiving = config['archiving'];
@@ -1708,7 +1751,8 @@ export function measuresArchive(config: Json): boolean {
  * An entry that names the plugin by the name an earlier release wrote names
  * it by its name now, where it stands and with its options; beside an entry
  * that names it so already it is taken out, since spec-brief refuses two
- * plugins of one name.
+ * plugins of one name. A `$schema` where spec-brief's `init` wrote it before
+ * the move names the schema where it is now, in the same place in the file.
  */
 export function mergeSpecBrief(current: Json, base: string | null = null, isPluginFile?: (path: string) => boolean): Json | null {
   const named = loadsPlugin(current, isPluginFile);
@@ -1717,10 +1761,12 @@ export function mergeSpecBrief(current: Json, base: string | null = null, isPlug
   const renamed = listed.flatMap((entry) => (!namesEarlierPlugin(entry) ? [entry] : named ? [] : [isObject(entry) ? { ...entry, module: PLUGIN } : PLUGIN]));
   const plugin = named || moved;
   const measure = base !== null && !measuresArchive(current);
-  if (plugin && !measure && !moved) return null;
+  const schema = namesEarlierSchema(current);
+  if (plugin && !measure && !moved && !schema) return null;
   const archiving: Json = isObject(current['archiving']) ? current['archiving'] : {};
   return {
     ...current,
+    ...(schema ? { $schema: SPEC_BRIEF_SCHEMA } : {}),
     plugins: plugin ? renamed : [...renamed, PLUGIN],
     ...(measure ? { archiving: { ...archiving, base } } : {}),
   };

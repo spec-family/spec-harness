@@ -27,6 +27,7 @@ import {
   describeSigners,
   describeSkipped,
   earlierPreCommit,
+  earlierTool,
   enabledPlugin,
   exportedFile,
   graphReadsBriefs,
@@ -63,6 +64,7 @@ import {
   mergeSpecBrief,
   mergeSpecGraph,
   missingGitHook,
+  namesEarlierSchema,
   ONE_STRING,
   patternReader,
   PLUGIN,
@@ -77,8 +79,10 @@ import {
   projectScripts,
   registersServer,
   reportHooks,
+  SCHEMA_MOVED,
   SERVER_MOVED,
   SPEC_BRIEF_CONFIGS,
+  SPEC_BRIEF_SCHEMA,
   SPEC_GRAPH_CONFIGS,
   wiringState,
   writtenHooks,
@@ -2497,6 +2501,81 @@ describe("the lines 0.21.0 and earlier wrote, with the script of the scope the f
       expect(describePlugin({ kind: 'earlier', file: '.spec-brief.json' })).toBe(
         `.spec-brief.json names spec-harness's plugin "${NAME}", by the name of this package's releases up to 0.21.0: spec-brief loads it from @descent-vtt/spec-harness while that is installed, and once it is not, its lint and its archive stop at exit 2, the plugin not loaded. spec-harness init --write names "${PLUGIN}" in its place`,
       );
+    });
+  });
+
+  describe("in spec-brief's $schema", () => {
+    const PACKAGE = './node_modules/@descent-vtt/spec-brief/schema.json';
+    const MAIN = 'https://raw.githubusercontent.com/DescentVTT/spec-brief/main/schema.json';
+
+    it('names the schema in the installed package, where spec-brief init wrote either earlier place, in the same place in the file', () => {
+      expect(SPEC_BRIEF_SCHEMA).toBe('./node_modules/@spec-family/spec-brief/schema.json');
+      for (const earlier of [PACKAGE, MAIN]) {
+        const merged = mergeSpecBrief({ $schema: earlier, briefs: 'b', plugins: [PLUGIN] });
+        expect(merged, earlier).toEqual({ $schema: SPEC_BRIEF_SCHEMA, briefs: 'b', plugins: [PLUGIN] });
+        expect(Object.keys(merged ?? {}), earlier).toEqual(['$schema', 'briefs', 'plugins']);
+        expect(namesEarlierSchema({ $schema: earlier }), earlier).toBe(true);
+      }
+      expect(mergeSpecBrief({ briefs: 'b', $schema: PACKAGE, plugins: ['@descent-vtt/spec-harness/spec-brief-plugin'] }, 'main')).toEqual({
+        briefs: 'b',
+        $schema: SPEC_BRIEF_SCHEMA,
+        plugins: [PLUGIN],
+        archiving: { base: 'main' },
+      });
+    });
+
+    it("leaves a schema anywhere else, and one already where it is now, as it is", () => {
+      for (const schema of [SPEC_BRIEF_SCHEMA, './node_modules/@descent-vtt/spec-brief/schema.json.bak', 'node_modules/@descent-vtt/spec-brief/schema.json', './schema.json', 1, null]) {
+        expect(mergeSpecBrief({ $schema: schema, plugins: [PLUGIN] }), String(schema)).toBeNull();
+        expect(namesEarlierSchema({ $schema: schema }), String(schema)).toBe(false);
+      }
+      expect(namesEarlierSchema({})).toBe(false);
+      expect(mergeSpecBrief({ $schema: './x.json' })).toEqual({ $schema: './x.json', plugins: [PLUGIN] });
+    });
+
+    it('is said with where the schema is now, and why the earlier place reads as none', () => {
+      expect(SCHEMA_MOVED).toBe(
+        `name spec-brief's schema "./node_modules/@spec-family/spec-brief/schema.json" in "$schema", where spec-brief's init wrote its place before the family moved to @spec-family on 2026-10-26, which an editor cannot read once @descent-vtt/spec-brief is uninstalled`,
+      );
+    });
+  });
+
+  describe("in .spec-harness.json's tools", () => {
+    const said = (word: string, runs: string): string =>
+      `"tools.spec-guard" in .spec-harness.json runs ${word}, a script of @descent-vtt/spec-guard, the family's name until 2026-10-26, ${runs}: name node_modules/@spec-family/spec-guard/bin/spec-guard.js in its place, or take the entry out and the harness runs the one installed in the project`;
+    const THERE = 'which runs while that package is installed, and not once it is uninstalled';
+    const GONE = 'which is not there, so the harness cannot run it';
+
+    it('says a command that runs a script of the earlier scope, and whether the script is there', () => {
+      const word = 'node_modules/@descent-vtt/spec-guard/bin/spec-guard.js';
+      const asked: string[] = [];
+      expect(
+        earlierTool('spec-guard', ['node', word, '--quiet'], (path) => {
+          asked.push(path);
+          return true;
+        }),
+      ).toEqual({ gone: false, detail: said(word, THERE) });
+      expect(asked).toEqual([word]);
+      expect(earlierTool('spec-guard', ['node', word], () => false)).toEqual({ gone: true, detail: said(word, GONE) });
+    });
+
+    it('reads the path as a shell, Windows or an absolute path spells it', () => {
+      for (const word of ['./node_modules/@descent-vtt/spec-guard/bin/spec-guard.js', 'node_modules\\@descent-vtt\\spec-guard\\bin\\spec-guard.js', '/repo/node_modules/@descent-vtt/spec-guard/bin/spec-guard.js', 'C:\\repo\\node_modules\\@descent-vtt\\x']) {
+        expect(earlierTool('spec-guard', ['node', word], () => false), word).toEqual({ gone: true, detail: said(word, GONE) });
+      }
+    });
+
+    it('says nothing of a command that runs no such script', () => {
+      for (const command of [
+        ['node', 'node_modules/@spec-family/spec-guard/bin/spec-guard.js'],
+        ['node', 'vendor/node_modules-@descent-vtt/x.js'],
+        ['node', 'my_node_modules/@descent-vtt/spec-guard/bin/spec-guard.js'],
+        ['node', 'node_modules/@descent-vttx/spec-guard.js'],
+        ['npx', '--no-install', '@descent-vtt/spec-guard'],
+        [],
+      ]) {
+        expect(earlierTool('spec-guard', command, () => false), command.join(' ')).toBeNull();
+      }
     });
   });
 

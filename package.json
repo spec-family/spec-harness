@@ -91,6 +91,6 @@
   },
   "homepage": "https://github.com/spec-family/spec-harness#readme",
   "overrides": {
-    "qs": "^6.16.0"
+    "qs": "^6.17.1"
   }
 }
