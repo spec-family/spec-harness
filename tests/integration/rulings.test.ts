@@ -533,6 +533,19 @@ describe.skipIf(!hasSshKeygen())('a ruling is a row whose commit a person signed
     expect(refused[0]?.hint).toContain('ruling R-001-1, signed by t@example.com, allows it, but spec-brief does not load spec-harness\'s plugin');
     expect((await cli(['doctor'], other.root)).stdout).toContain('\nplugin  spec-brief has no configuration at the root, so it loads no plugin');
 
+    // By the name an earlier release wrote, spec-brief loads the earlier
+    // package's plugin, here one that waives nothing; the name now added
+    // beside it would be a second plugin of one name.
+    other.write('node_modules/@descent-vtt/spec-harness/package.json', `${JSON.stringify({ name: '@descent-vtt/spec-harness', type: 'module', exports: { './spec-brief-plugin': './plugin.js' } })}\n`);
+    other.write('node_modules/@descent-vtt/spec-harness/plugin.js', "export default function plugin() {\n  return { name: 'spec-harness', rules: [], waive: async () => [] };\n}\n");
+    other.write('.spec-brief.json', `${JSON.stringify({ plugins: ['@descent-vtt/spec-harness/spec-brief-plugin'] })}\n`);
+    other.commit('spec-brief: the plugin by the name an earlier release wrote');
+    const named = (await audit()).filter((f) => f.rule === 'archive/protected-file');
+    expect(named).toHaveLength(1);
+    expect(named[0]?.hint).toContain(
+      'ruling R-001-1, signed by t@example.com, allows it, but spec-brief\'s configuration names spec-harness\'s plugin "@descent-vtt/spec-harness/spec-brief-plugin", by the name of this package\'s releases up to 0.21.0, so its archive asks that release',
+    );
+
     other.write('.spec-brief.json', `${JSON.stringify({ plugins: ['@spec-family/spec-harness/spec-brief-plugin'] })}\n`);
     other.commit('spec-brief: load the spec-harness plugin');
     const findings = await audit();

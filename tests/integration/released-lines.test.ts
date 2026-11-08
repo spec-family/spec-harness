@@ -23,7 +23,7 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { arrayMatcher, GIT_HOOK_LINE, GUARD_HOOK, matchingUnder, mcpServer, mergeClaudeSettings, PLUGIN, PRE_COMMIT, PROJECT_DIR, PROJECT_DIR_OR_HERE, reportHooks, TURN_HOOK, withSessionStart, withTurnReport } from '../../src/configure.js';
+import { arrayMatcher, GIT_HOOK_LINE, GUARD_HOOK, matchingUnder, mcpServer, mergeClaudeSettings, PLUGIN, PRE_COMMIT, PROJECT_DIR, PROJECT_DIR_OR_HERE, reportHooks, SCHEMA_MOVED, SPEC_BRIEF_SCHEMA, TURN_HOOK, withSessionStart, withTurnReport } from '../../src/configure.js';
 import { CALLABLE_TOOLS, WRITING_TOOLS } from '../../src/hooks.js';
 import { claudeHookLine, refusal, twoValues } from '../../src/usage.js';
 import { parseOptions } from '../../src/workspace.js';
@@ -659,6 +659,8 @@ describe('the lines 0.1.2 to 0.21.0 wrote, once the package is @spec-family/spec
   };
   const SERVER = { command: 'node', args: [`\${CLAUDE_PROJECT_DIR:-.}/${EARLIER}`, 'mcp', '--root', '${CLAUDE_PROJECT_DIR:-.}'] };
   const NAME = '@descent-vtt/spec-harness/spec-brief-plugin';
+  /** spec-brief's schema where its init wrote it before the move, from 2026-09-26 on. */
+  const SCHEMA = './node_modules/@descent-vtt/spec-brief/schema.json';
   /** The hook 0.19.0 to 0.21.0 wrote, as their tags have it. */
   const hook19 = (): string => releasedHook(EARLIER);
 
@@ -668,7 +670,7 @@ describe('the lines 0.1.2 to 0.21.0 wrote, once the package is @spec-family/spec
     project.git('checkout', '-q', '-b', 'brief/001-rotate');
     project.write('.claude/settings.json', `${JSON.stringify(settings, null, 2)}\n`);
     project.write('.mcp.json', `${JSON.stringify({ mcpServers: { other: { command: 'x' }, 'spec-harness': SERVER } }, null, 2)}\n`);
-    project.write('.spec-brief.json', `${JSON.stringify({ plugins: [NAME] }, null, 2)}\n`);
+    project.write('.spec-brief.json', `${JSON.stringify({ $schema: SCHEMA, plugins: [NAME] }, null, 2)}\n`);
     project.write('.git/hooks/pre-commit', hook19());
     chmodSync(join(project.root, '.git', 'hooks', 'pre-commit'), 0o755);
     installHarness(project.root);
@@ -724,6 +726,7 @@ describe('the lines 0.1.2 to 0.21.0 wrote, once the package is @spec-family/spec
       expect(step('.mcp.json')?.action).toBe('update');
       expect(step('.mcp.json')?.detail.startsWith(`the entry an earlier release wrote, which ran ${EARLIER}, runs ${SCRIPT}: the spec-harness MCP server`)).toBe(true);
       expect(step('.spec-brief.json')).toMatchObject({ action: 'update', detail: expect.stringContaining(`name spec-harness's plugin "${PLUGIN}" where an earlier release wrote "${NAME}"`) });
+      expect(step('.spec-brief.json')?.detail).toContain(`uninstalled; ${SCHEMA_MOVED}; measure the archive from main`);
       // git's hook is written only where asked for, and kept with a note until then.
       expect(step('.git/hooks/pre-commit')).toMatchObject({ action: 'keep', detail: expect.stringContaining('spec-harness init --git-hook --write writes it again') });
       expect(project.read('.git/hooks/pre-commit')).toBe(hook19());
@@ -732,7 +735,7 @@ describe('the lines 0.1.2 to 0.21.0 wrote, once the package is @spec-family/spec
         hooks: { PreToolUse: [{ matcher: MATCHER, hooks: [now] }], PostToolUse: [{ matcher: MATCHER, hooks: [now] }], SessionStart: [{ hooks: [now] }], Stop: [{ hooks: [TURN_HOOK] }] },
       });
       expect(JSON.parse(project.read('.mcp.json'))).toEqual({ mcpServers: { other: { command: 'x' }, 'spec-harness': mcpServer(PROJECT_DIR_OR_HERE) } });
-      expect(JSON.parse(project.read('.spec-brief.json'))['plugins']).toEqual([PLUGIN]);
+      expect(JSON.parse(project.read('.spec-brief.json'))).toEqual({ $schema: SPEC_BRIEF_SCHEMA, plugins: [PLUGIN], archiving: { base: 'main' } });
       const hooked = parsed<{ steps: { file: string; action: string; detail: string }[] }>(await cli(['init', '--git-hook', '--write', '--format', 'json'], project.root)).steps;
       expect(hooked.find((found) => found.file === '.git/hooks/pre-commit')).toEqual({
         file: '.git/hooks/pre-commit',

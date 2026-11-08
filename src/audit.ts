@@ -25,7 +25,7 @@
  */
 
 import { CONFIG_FILE } from './config.js';
-import { PLUGIN } from './configure.js';
+import { EARLIER_PLUGIN, PLUGIN } from './configure.js';
 import { rooted, rulingFor, type VerifiedRuling } from './guard.js';
 import type { DependencyChange, InstallScriptChange } from './manifests.js';
 import { sameSection } from './reader.js';
@@ -80,6 +80,12 @@ export interface AuditInput {
   readonly verifiedRulings: readonly VerifiedRuling[];
   /** Whether spec-brief's configuration loads this package's plugin, through which its archive learns of them. */
   readonly pluginLoaded: boolean;
+  /**
+   * Whether, loading none by its name now, that configuration names the
+   * plugin by the name of this package's releases up to 0.21.0, which
+   * spec-brief loads from the earlier package; `false` when not given.
+   */
+  readonly pluginNamedEarlier?: boolean | undefined;
 }
 
 /**
@@ -225,9 +231,13 @@ function archiveHint(reason: ArchiveReason, input: AuditInput): string {
   const ruling = reason.rule === 'protected-file' && reason.path !== undefined ? rulingFor(input.verifiedRulings, reason.path) : undefined;
   if (ruling === undefined) return reason.hint;
   const allowed = `ruling ${ruling.id}, signed by ${ruling.signer}, allows it`;
-  return input.pluginLoaded
-    ? `${allowed}, and the archive still refused it: check that spec-brief loads the spec-harness installed here and measures from the same base (spec-harness doctor)`
-    : `${allowed}, but spec-brief does not load spec-harness's plugin, which is how its archive learns of signed rulings: add "${PLUGIN}" to "plugins" in its configuration, or run spec-harness init --write`;
+  if (input.pluginLoaded) return `${allowed}, and the archive still refused it: check that spec-brief loads the spec-harness installed here and measures from the same base (spec-harness doctor)`;
+  // Added beside the name an earlier release wrote, the name now would be a
+  // second plugin of one name, which spec-brief refuses.
+  if (input.pluginNamedEarlier === true) {
+    return `${allowed}, but spec-brief's configuration names spec-harness's plugin "${EARLIER_PLUGIN}", by the name of this package's releases up to 0.21.0, so its archive asks that release and not the one installed here: run spec-harness init --write, which names "${PLUGIN}" in its place, since spec-brief refuses the two side by side`;
+  }
+  return `${allowed}, but spec-brief does not load spec-harness's plugin, which is how its archive learns of signed rulings: add "${PLUGIN}" to "plugins" in its configuration, or run spec-harness init --write`;
 }
 
 export function audit(input: AuditInput): AuditReport {

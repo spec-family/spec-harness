@@ -39,6 +39,7 @@ import {
   guardSwitchedOff,
   isStarted,
   loadsEarlierPlugin,
+  namesEarlierSchema,
   loadsPlugin,
   matchingUnder,
   measuresArchive,
@@ -61,6 +62,7 @@ import {
   PROJECT_SETTINGS,
   PROTECT_RULE_FILES,
   registersServer,
+  SCHEMA_MOVED,
   SERVER_MOVED,
   SPEC_BRIEF_CONFIGS,
   SPEC_GRAPH_CONFIGS,
@@ -92,9 +94,10 @@ function stringify(value: unknown): string {
 
 const PLUGIN_DETAIL = `load spec-harness's plugin, "${PLUGIN}": spec-brief's archive asks it whether a signed ruling allows a protected file, and refuses the file without it`;
 
-/** What init adds to spec-brief's configuration, said once for the plan: the plugin added, named in place of its earlier name, or neither. */
-function specBriefDetail(plugin: 'add' | 'rename' | null, base: string | null): string {
+/** What init adds to spec-brief's configuration, said once for the plan: the plugin added, named in place of its earlier name, or neither; the schema named where it is now; and the base. */
+function specBriefDetail(plugin: 'add' | 'rename' | null, schema: boolean, base: string | null): string {
   const parts = plugin === 'add' ? [PLUGIN_DETAIL] : plugin === 'rename' ? [PLUGIN_MOVED] : [];
+  if (schema) parts.push(SCHEMA_MOVED);
   if (base !== null) parts.push(`measure the archive from ${base}, as spec-harness does: without a base, spec-brief's archive warns that the scope went unmeasured and checks no protected file`);
   return parts.join('; ');
 }
@@ -221,7 +224,7 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
       steps.push({
         file: '.spec-brief.json',
         action: 'update',
-        detail: specBriefDetail('add', base),
+        detail: specBriefDetail('add', false, base),
         apply: async () => {
           const written = await readJson(created);
           if (written === null || written === 'unreadable') throw new Error('spec-brief init wrote no configuration JSON can read');
@@ -257,7 +260,7 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
         steps.push({ file: briefConfig, action: 'keep', detail: `spec-harness's plugin is loaded${from}` });
       } else {
         const plugin = loadsEarlierPlugin(config) ? 'rename' : loadsPlugin(config, isPluginFile) ? null : 'add';
-        const detail = specBriefDetail(plugin, measured ? null : base);
+        const detail = specBriefDetail(plugin, namesEarlierSchema(config), measured ? null : base);
         steps.push({ file: briefConfig, action: 'update', detail, apply: () => writeAtomic(file, stringify(merged)) });
       }
     }

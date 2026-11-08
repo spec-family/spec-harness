@@ -104,10 +104,11 @@ second factor, never published from a workstation
 
 1. On a branch, set the version and give it notes:
    `npm version <x.y.z> --no-git-tag-version`, set the same version in
-   `.claude-plugin/plugin.json` and on the plugin in
-   `.claude-plugin/marketplace.json`, then move the changelog's
-   `## Unreleased` entries under `## <x.y.z>`. The test suite fails until the
-   changelog has a section for the version and both manifests carry it.
+   `.claude-plugin/plugin.json`, then move the changelog's `## Unreleased`
+   entries under `## <x.y.z>`. The test suite fails until the changelog has
+   a section for the version and the manifest carries it. The plugin's entry
+   in `.claude-plugin/marketplace.json` names no version: Claude Code reads
+   the manifest's first, and `claude plugin validate` warns where both do.
 2. Merge to main.
 3. Tag the merge commit and push the tag:
 

@@ -740,6 +740,7 @@ export async function runAudit(workspace: Workspace, brief: BriefRow, reader: Do
     unverifiedRulings: rulings.unverified,
     verifiedRulings: rulings.verified,
     pluginLoaded: plugin.kind === 'loaded',
+    pluginNamedEarlier: plugin.kind === 'earlier',
   });
   const findings = [...rulings.problems, ...report.findings];
   return {
