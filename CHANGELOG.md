@@ -9,6 +9,19 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Documentation
+
+- **What a ruling proves.** The README's section on rulings and ADR-0006
+  say that a ruling which counts proves the agent did not sign it, a key
+  the base branch's allowed-signers file lists having signed it, and a
+  FIDO2 key needing a person's touch, and that it is not two-person review
+  or separation of duties: nothing checks that the signer is someone other
+  than the brief's author or whoever committed the round's work. Nothing
+  that is checked changes
+  ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md)).
+
 ## 0.23.0
 
 git's pre-commit hook takes the commit that archives the round's brief on
