@@ -663,7 +663,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // What doctor alone runs of them, loaded before anything is asked: the
   // five things below are asked at once, and none waits on a module.
   const [configure, round, setup, signing] = await Promise.all([import('./configure.js'), import('./round.js'), import('./setup.js'), import('./signers.js')]);
-  const { describeBase, describeClaudeCode, describeClaudeRelease, describeGitHook, describeHooksOff, describeInstalls, describePlugin, describePresence, describeSignerKeys, describeSignerProblem, describeSigners, guardSwitchedOff, guardWired, NO_SESSION_START, NO_TURN_END, wiringState } = configure;
+  const { describeBase, describeClaudeCode, describeClaudeRelease, describeGitHook, describeHooksOff, describeInstalls, describePlugin, describePluginAhead, describePluginScripts, describePresence, describeSignerKeys, describeSignerProblem, describeSigners, guardSwitchedOff, guardWired, NO_SESSION_START, NO_TURN_END, wiringState } = configure;
   const { diagnoseBrief, specBriefPlugin } = round;
   const { gitHook } = setup;
   const { notFido2, readAllowedSigners } = signing;
@@ -743,7 +743,13 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // the hook's line runs where it is not this work tree's own: a note. In
   // the main work tree both are read from one install, and are one.
   const installs = guardWired(wiring) && main !== null ? describeInstalls(main, harnessRelease(main), harnessRelease(workspace.root)) : null;
-  const wiringNotes = [describePresence(wiring), wiring.hooksOff === null ? null : describeHooksOff(wiring.hooksOff, switchedOff), installs].filter((note): note is string => note !== null);
+  // And what the plugin runs, where it may be on this machine: a script the
+  // project has not installed, which Claude Code cannot start, fails doctor
+  // (ADR-0012, amended 2026-11-08); a plugin of a release after the package
+  // installed here is a note. The package is this work tree's own.
+  const unstartable = describePluginScripts(wiring);
+  const ahead = describePluginAhead(wiring.pluginVersions, harnessRelease(workspace.root));
+  const wiringNotes = [describePresence(wiring), wiring.hooksOff === null ? null : describeHooksOff(wiring.hooksOff, switchedOff), installs, unstartable, ahead].filter((note): note is string => note !== null);
   // How the hook runs the harness is a note: one that goes through npx guards
   // as well as one that does not, and fails nothing, --strict or not.
   const { hook, note: hookNote } = answerOf(hookAsked);
@@ -819,7 +825,8 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // brief spec-brief cannot be asked about, which the hook holds every write
   // for too, guard hooks that disableAllHooks
   // switches off, a plugin that is turned on and is not on this machine
-  // where no hook of init's stands in for it, a Claude Code too old to run
+  // where no hook of init's stands in for it, a plugin whose hooks run a
+  // script the project has not installed, a Claude Code too old to run
   // the hooks, and something at the path of git's pre-commit hook that git
   // cannot run and stops every commit at. A release that cannot be told is
   // not fine either, nor a line whose reading cannot be, nor a plugin that
@@ -831,6 +838,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   const usable = rows.some((row) => row.state === 'found');
   const off = wiring.lines.some((line) => line.state === 'off' || line.state === 'held');
   const missing = wiring.presence?.state === 'absent' && wiring.hooks.length === 0;
+  const notInstalled = unstartable !== null;
   const tooOld = release?.state === 'outdated';
   const stopped = hook.state === 'stops';
   const unworkable = named.branch && closed?.state !== 'waiting-to-merge';
@@ -839,7 +847,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   const untold =
     options.strict &&
     (release?.state === 'unknown' || wiring.lines.some((line) => line.state === 'unknown') || wiring.presence?.state === 'unknown' || (hook.state === 'unreadable' && hook.runs) || hook.state === 'unknown');
-  return outdated || !usable || claude === 'both' || off || unworkable || named.holds || switchedOff || missing || tooOld || stopped || untold ? EXIT_FAILED : EXIT_OK;
+  return outdated || !usable || claude === 'both' || off || unworkable || named.holds || switchedOff || missing || notInstalled || tooOld || stopped || untold ? EXIT_FAILED : EXIT_OK;
 }
 
 /* ---------------------------------------------------------------- dispatch */

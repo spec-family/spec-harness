@@ -9,6 +9,31 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Changed
+
+- **`doctor` fails a plugin-only project that has not installed the
+  package.** The Claude Code plugin's hooks and server run
+  `${CLAUDE_PROJECT_DIR}/node_modules/@spec-family/spec-harness/bin/spec-harness.js`,
+  so in a project without the package Claude Code cannot start them and
+  lets each write go ahead, and `doctor` exited 0. It now reads what the
+  plugin runs, from the `hooks/hooks.json` and `.mcp.json` of each version
+  Claude Code has cached, or the script every release under `@spec-family`
+  runs where none is, and exits 1 where that script is not installed, with
+  `npm install --save-dev @spec-family/spec-harness`. A plugin of a release
+  after the package installed is a note. The project's install stays the
+  one way in: its lockfile pins the release the siblings agree on
+  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md)).
+  Upgrading: install the package in each project the plugin guards.
+- **On a CI runner `doctor` does not require the plugin.** Where `CI` is
+  set, as GitHub Actions and GitLab CI set it, and no cache holds the
+  plugin, it is neither looked for nor counted as wiring, Claude Code's
+  release is not asked for it, and `--strict` fails nothing for it, where a
+  plugin-only project's `doctor --strict` failed on every runner.
+  `--format json` has `claudeCode.presence.state` `unchecked` there, and
+  `claudeCode.pluginVersions` and `claudeCode.pluginScripts` everywhere.
+
 ## 0.23.0
 
 git's pre-commit hook takes the commit that archives the round's brief on

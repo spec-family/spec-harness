@@ -1249,9 +1249,25 @@ export interface PluginsRoot {
 
 /**
  * Whether this machine has what Claude Code loads a plugin from. `detail`
- * is why, where the plugin is not simply there.
+ * is why, where the plugin is not simply there. `unchecked` is a CI runner
+ * that holds no version of it, where no Claude Code session runs, so it is
+ * not looked for ({@link onCiRunner}).
  */
-export type PluginPresence = { readonly state: 'present'; readonly detail: null } | { readonly state: 'absent' | 'unknown'; readonly detail: string };
+export type PluginPresence = { readonly state: 'present'; readonly detail: null } | { readonly state: 'absent' | 'unknown' | 'unchecked'; readonly detail: string };
+
+/**
+ * Whether doctor runs on a CI runner: `CI` set to anything but `false` or
+ * `0`, which GitHub Actions and GitLab CI set to `true` on every job. No
+ * Claude Code session runs on one, so the plugin settings turn on is
+ * neither looked for nor required there (ADR-0012, amended 2026-11-08).
+ */
+export function onCiRunner(env: Readonly<Record<string, string | undefined>>): boolean {
+  const value = (env['CI'] ?? '').trim().toLowerCase();
+  return !['', 'false', '0'].includes(value);
+}
+
+/** What doctor says of the plugin on a CI runner. */
+const ON_A_RUNNER = 'CI is set, so this is a CI runner, where no Claude Code session runs: the plugin is not looked for here, and neither is the package its hooks run';
 
 function turnsOn(settings: unknown, id: string): boolean {
   const plugins = field(settings, 'enabledPlugins');
@@ -1285,8 +1301,13 @@ function holds(record: unknown, name: string): boolean {
  * that is not there or cannot be read, a marketplace that is there or is
  * declared, whose own list is not read here, and a `true` in a settings
  * file of the person's own, for which Claude Code fetches.
+ *
+ * But on a CI runner, `runner`, a cache that holds no version of it is
+ * `unchecked`: the runner has no record of marketplaces, which reads as
+ * `unknown`, and runs no session the plugin could guard.
  */
-export function pluginPresence(plugin: EnabledPlugin, sources: readonly ClaudeSettings[], roots: readonly PluginsRoot[]): PluginPresence {
+export function pluginPresence(plugin: EnabledPlugin, sources: readonly ClaudeSettings[], roots: readonly PluginsRoot[], runner = false): PluginPresence {
+  if (runner && !roots.some((root) => root.cached)) return { state: 'unchecked', detail: ON_A_RUNNER };
   const untold = (detail: string): PluginPresence => ({ state: 'unknown', detail });
   const marketplace = pluginMarketplace(plugin.id);
   if (marketplace === null) return untold(`${plugin.id} names no marketplace whose plugins are kept in a cache: a plugin from --plugin-dir, a skills directory or a claude.ai account comes another way`);
@@ -1313,6 +1334,85 @@ export function pluginPresence(plugin: EnabledPlugin, sources: readonly ClaudeSe
     state: 'absent',
     detail: `${PROJECT_SETTINGS} alone turns it on, and Claude Code fetches no plugin that a project's settings alone turn on, unless its marketplace lists it by a relative path or a seed directory holds it: no marketplace ${marketplace} is recorded as fetched or declared in settings, and no version of the plugin is in a cache (${roots.map((root) => join(root.directory, 'cache')).join(', ')})`,
   };
+}
+
+/** A script the plugin's hooks or its server run from the project, and whether it is there. */
+export interface PluginScript {
+  /** As the plugin's file writes it, `${CLAUDE_PROJECT_DIR}` and all. */
+  readonly script: string;
+  /**
+   * The plugin's file it was read from, or `null` where no version of the
+   * plugin was there to read, and it is the script every release of the
+   * plugin under `@spec-family` runs.
+   */
+  readonly file: string | null;
+  /** Whether it is a file in a place `${CLAUDE_PROJECT_DIR}` can point. */
+  readonly there: boolean;
+}
+
+/** The script every release of the plugin under `@spec-family` runs, its hooks and its server alike. */
+export const PLUGIN_SCRIPT = `${PROJECT_DIR}/${BIN}`;
+
+/**
+ * What one of the plugin's files, `hooks/hooks.json` or `.mcp.json`, runs
+ * from the project: each word of its strings that is a script under
+ * `${CLAUDE_PROJECT_DIR}`, in the order the file has them, once each. Read
+ * in every string, so that an argument of exec form and a word of shell
+ * form are both read, a double quote around it left out: a shell-form
+ * line separates its words by a space.
+ */
+export function projectScripts(file: unknown): string[] {
+  const found: string[] = [];
+  // An array's values are its items, so the one test reads both.
+  const read = (value: unknown): void => {
+    if (isObject(value)) Object.values(value).forEach(read);
+    else if (typeof value === 'string') {
+      for (const word of value.replaceAll('"', '').split(' ')) {
+        if (word.startsWith(`${PROJECT_DIR}/`) && word.endsWith('.js') && !found.includes(word)) found.push(word);
+      }
+    }
+  };
+  read(file);
+  return found;
+}
+
+/**
+ * What doctor says where the plugin's hooks or its server run a script that
+ * is not there: Claude Code cannot start them, and lets each write go
+ * ahead (ADR-0012, amended 2026-10-26 and 2026-11-08). The project
+ * installs the package, whose lockfile pins the release the siblings agree
+ * on. `null` where every script is there, or none was read: no plugin is
+ * on, or it is not on this machine, or this is a CI runner.
+ */
+export function describePluginScripts({ plugin, pluginScripts }: Pick<ClaudeCodeWiring, 'plugin' | 'pluginScripts'>): string | null {
+  if (plugin === null || pluginScripts === null) return null;
+  // The hooks and the server name one script, and each file is read.
+  const gone = [...new Set(pluginScripts.filter((script) => !script.there).map((script) => script.script))];
+  if (gone.length === 0) return null;
+  const install = `install the package they run in the project, npm install --save-dev ${PACKAGE}, which every project the plugin guards installs`;
+  const earlier = gone.some((script) => script.includes('/node_modules/@descent-vtt/'));
+  const update = earlier ? `; a script under @descent-vtt is the plugin's of a release before 0.22.0, which runs a package no release under @spec-family installs: update the plugin as well, from its marketplace` : '';
+  return `${isOn(plugin)}, and its hooks and server run ${named(gone)}, which this project has not installed, so Claude Code cannot start them and lets each write go ahead: ${install}${update}`;
+}
+
+/**
+ * A note where a version of the plugin on this machine is a release after
+ * the package installed in the project: the plugin's hooks and server are
+ * its release's, and the package installed here answers them. `null` where
+ * none is, or either cannot be read as a release, as a version that is a
+ * commit cannot.
+ */
+export function describePluginAhead(versions: readonly string[], installed: string | null): string | null {
+  // No package installed reads as text that is no release, as a version
+  // that cannot be read does: a test of it first would answer the same.
+  const release = parseVersion(String(installed));
+  if (release === null) return null;
+  const ahead = versions.filter((version) => {
+    const parsed = parseVersion(version);
+    return parsed !== null && !meets(release, parsed);
+  });
+  if (ahead.length === 0) return null;
+  return `note: the plugin is ${named(ahead)}, a release after the package its hooks and server run, ${installed} here: they are the plugin's release, and the package installed here answers them, so install that release of the package, npm install --save-dev ${PACKAGE}@${ahead[0]!}`;
 }
 
 /** Where the plugin is on, as a person would look it up. */
@@ -1375,6 +1475,14 @@ export interface ClaudeCodeWiring {
   readonly plugin: EnabledPlugin | null;
   /** Whether this machine has what Claude Code loads that plugin from; `null` where no settings file turns one on. */
   readonly presence: PluginPresence | null;
+  /** The versions of that plugin its caches hold, as their directories name them. */
+  readonly pluginVersions: readonly string[];
+  /**
+   * What that plugin's hooks and server run from the project, and whether
+   * each is there; `null` where no plugin is on, it is not on this machine,
+   * doctor runs on a CI runner, or nothing gave the places to look in.
+   */
+  readonly pluginScripts: readonly PluginScript[] | null;
   /** The settings file whose `disableAllHooks` turns the hooks off, or `null`. */
   readonly hooksOff: string | null;
   /** The settings files that hold the guard hooks: a line of the hook that Claude Code starts for a write, before it or after. */
@@ -1418,9 +1526,19 @@ function runInit(wiring: Wired): string {
   return `${describeArrayMatcher(PROJECT_SETTINGS, unloaded)}, those init writes among them: ${ONE_STRING}, then run spec-harness init --write`;
 }
 
-/** Why the plugin settings turn on is not on this machine, or `null` where it is, may be, or none is on. */
+/**
+ * Why the plugin settings turn on brings nothing here, or `null` where it
+ * does, may, or none is on: it is not on this machine, or this is a CI
+ * runner, where no session runs.
+ */
 function absence(wiring: Wired): string | null {
-  return wiring.presence?.state === 'absent' ? wiring.presence.detail : null;
+  const presence = wiring.presence ?? null;
+  return presence?.state === 'absent' || presence?.state === 'unchecked' ? presence.detail : null;
+}
+
+/** Whether the plugin settings turn on is left unchecked, on a CI runner. */
+function unchecked(wiring: Wired): boolean {
+  return wiring.presence?.state === 'unchecked';
 }
 
 /**
@@ -1471,6 +1589,8 @@ export function describePresence(wiring: Wired): string | null {
   const { plugin, presence } = wiring;
   if (plugin === null || presence === undefined || presence === null || presence.state === 'present') return null;
   if (presence.state === 'unknown') return `whether ${plugin.id} is on this machine cannot be told: ${presence.detail}. A plugin that is not there brings no hook: Claude Code's /plugin lists it, and its errors`;
+  // On a runner the wiring's own sentence says it where nothing else is wired.
+  if (unchecked(wiring)) return wiring.hooks.length > 0 || wiring.server ? `${isOn(plugin)}; ${presence.detail}` : null;
   if (wiring.hooks.length > 0) return `${isAbsent(plugin, presence.detail, 'no hook')}. With the plugin installed as well, ${PARTS.hooks.twice}: ${turnOff(plugin)}`;
   return wiring.server ? unguarded(plugin, presence.detail, wiring) : null;
 }
@@ -1490,7 +1610,8 @@ export function describeClaudeCode(wiring: Wired): string {
     return own;
   }
   const absent = absence(wiring);
-  if (absent !== null) return entries === '' ? unguarded(plugin, absent, wiring) : own;
+  if (absent !== null && entries !== '') return own;
+  if (absent !== null) return unchecked(wiring) ? `${isOn(plugin)}; ${absent}` : unguarded(plugin, absent, wiring);
   if (entries === '') return `${isOn(plugin)} and brings the guard hooks and the server`;
   const twice = [...(wiring.hooks.length > 0 ? [PARTS.hooks.twice] : []), ...(wiring.server ? [PARTS.server.twice] : [])].join(' and ');
   return `${isOn(plugin)}, beside ${entries}: ${twice}. Keep one: take spec-harness's entries out of those files, or ${turnOff(plugin)}`;
