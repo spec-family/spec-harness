@@ -219,6 +219,8 @@ A ruling is a row in the brief's `## Rulings` table. It **counts** when the comm
 - An agent can write a row and compute any hash; it cannot produce the person's signature, and an edit to the row moves it to a commit that must be signed again ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md)).
 - Use a FIDO2 key (`ssh-keygen -t ed25519-sk`) where the agent runs as you: its signature needs a touch no process can supply.
 
+**What a ruling proves** is that the agent did not sign it: a key the base branch's allowed-signers file lists signed the row's commit, and a FIDO2 key needs a person's touch. It is not two-person review or separation of duties. Nothing checks that the signer is someone other than the brief's author or whoever committed the round's work, so one person can write the brief, run the round and sign the ruling. Where a second person must decide, that is the forge's review to require, as for any change ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md), amended 2026-11-08).
+
 **The spec-brief plugin.** spec-brief's archive refuses a round that changed a protected file, and learns that a signed ruling allows it only from this package's spec-brief plugin: `init` adds `"plugins": ["@spec-family/spec-harness/spec-brief-plugin"]` to spec-brief's configuration.
 
 - Without it, the archive refuses the file whatever was signed.
