@@ -2505,7 +2505,12 @@ describe("the lines 0.21.0 and earlier wrote, with the script of the scope the f
       });
       // A Windows path, which the earlier script ends just as well, and is no line a release wrote.
       const windows = `C:\\p\\node_modules\\@descent-vtt\\spec-harness\\bin\\spec-harness.js`;
-      expect(at(both({ ...OLD, args: [windows, 'hook', 'claude'] }), looked([windows]))[0]).toMatchObject({ state: 'guards', detail: `${runs(W, windows)}; ${BY_HAND}` });
+      // Absolute where Windows reads it, and looked for; elsewhere a path from where the session stands, which is said as one that cannot be.
+      const untold = `${W}: it runs ${windows}, a path read from wherever the session stands as the hook starts, so whether its script is there cannot be told here: name it from \${CLAUDE_PROJECT_DIR}, as init writes it`;
+      expect(at(both({ ...OLD, args: [windows, 'hook', 'claude'] }), looked([windows]))[0]).toMatchObject({
+        state: 'guards',
+        detail: process.platform === 'win32' ? `${runs(W, windows)}; ${BY_HAND}` : `${runs(W, windows)}; ${BY_HAND}; ${untold}`,
+      });
     });
 
     it('says, where nothing is looked for, as init reads it, nothing of a line init rewrites and how to move one it leaves', () => {
