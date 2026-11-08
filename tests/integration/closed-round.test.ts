@@ -151,7 +151,8 @@ describe('doctor on a closed round\'s branch it fails for', () => {
     git(job, 'checkout', '-q', '-B', 'brief/020-compute', 'FETCH_HEAD');
     const headOnly = await cli(['doctor'], job);
     expect(headOnly.code).toBe(1);
-    expect(briefLines(headOnly.stdout)[1]).toBe(`        ${UNTOLD('the base cannot be resolved ("main" names no commit): fetch it under that name, with its history, as git fetch origin main:main fetches main')}`);
+    // The configured base is looked for as the remote's branch as well, which this job has none of either.
+    expect(briefLines(headOnly.stdout)[1]).toBe(`        ${UNTOLD('the base cannot be resolved ("main" names no commit, and neither does remotes/origin/main): fetch it under that name, with its history, as git fetch origin main:main fetches main')}`);
     git(job, 'fetch', '-q', repo.root, 'main:main');
     const fetched = await cli(['doctor'], job);
     expect(fetched.code).toBe(0);

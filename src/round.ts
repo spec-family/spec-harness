@@ -13,7 +13,7 @@
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { readdir, readFile, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readArchivePlan, readGuardRun } from './answers.js';
@@ -34,7 +34,12 @@ import {
   matchingUnder,
   patternReader,
   pluginMarketplace,
+  onCiRunner,
+  PLUGIN_SCRIPT,
+  PROJECT_DIR,
   pluginPresence,
+  projectScripts,
+  type PluginScript,
   PROJECT_SETTINGS,
   readsOnFailure,
   registersServer,
@@ -90,12 +95,19 @@ export async function resolveBase(workspace: Workspace, flag: string | undefined
   // Neither commit waits on the other, so git is asked for both at once, and
   // they are read in the order they were asked in before: a base that names
   // no commit is said before a HEAD that names none.
-  const [sha, head] = await Promise.all([revision(ref, workspace.root), revision('HEAD', workspace.root)]);
-  if (sha === null) return { kind: 'unresolved', reason: `"${ref}" names no commit` };
+  const [named, head] = await Promise.all([revision(ref, workspace.root), revision('HEAD', workspace.root)]);
+  // The configured base is a branch's name, and a CI checkout fetches the
+  // branch as the remote's alone, origin/main with no main: where the name
+  // reads as no commit here, the remote's branch of that name is the base,
+  // spelled as git reads it whatever a branch or a tag is called (git.ts,
+  // remoteDefault). A base given on the command line is read as typed.
+  const remote = named === null && source === 'config' ? `remotes/origin/${ref}` : null;
+  const sha = remote === null ? named : await revision(remote, workspace.root);
+  if (sha === null) return { kind: 'unresolved', reason: `"${ref}" names no commit${remote === null ? '' : `, and neither does ${remote}`}` };
   if (head === null) return { kind: 'unresolved', reason: 'HEAD names no commit: nothing is committed on this branch yet' };
   const common = await mergeBase(sha, head, workspace.root);
   if (common === null) return { kind: 'unresolved', reason: `"${ref}" and HEAD share no history` };
-  return { kind: 'resolved', ref, source, sha, mergeBase: common, head };
+  return { kind: 'resolved', ref: remote ?? ref, source, sha, mergeBase: common, head };
 }
 
 /* ----------------------------------------------------------------- rulings */
@@ -134,13 +146,17 @@ export async function checkRulings(workspace: Workspace, brief: Pick<BriefRow, '
     const reason = `${base.ref} has no ${workspace.config.rulings.allowedSigners}, so no signature can count`;
     return { rows, verified: [], unverified: allows.map((row) => ({ id: row.id, reason })), problems: findings };
   }
-  // Only verify-commit below reads this copy, so where it is kept, and under
-  // what name, is equivalent to its mutants. The one that reads the digest
-  // with no encoding names the file by its bytes, which a path refuses when
-  // one of them is NUL: a sweep counts that mutant killed now and then.
+  // Only verify-commit below reads this copy, so where it is kept is
+  // equivalent to its mutants. It is named by the whole digest, read as hex
+  // from its bytes: a digest asked for in no encoding, which a mutant of
+  // `digest('hex')` asked for, named the file by bytes a path refuses when
+  // one of them is NUL, so a sweep counted that mutant killed in some runs
+  // and survived in others, by the bytes of the run's temporary paths. A
+  // buffer refuses to be read in no encoding, every time, and the whole
+  // digest has no cut that a mutant can leave out unseen.
   const directory = await stateDirectory(workspace.commonDir, 'signers');
   const { createHash } = await import('node:crypto');
-  const file = join(directory, `${createHash('sha256').update(signers).digest('hex').slice(0, 16)}`);
+  const file = join(directory, createHash('sha256').update(signers).digest().toString('hex'));
   await writeAtomic(file, signers);
   const verified: VerifiedRuling[] = [];
   const unverified: { id: string; reason: string }[] = [];
@@ -449,16 +465,40 @@ export function pluginDirectories(env: CliIO['env'], platform: NodeJS.Platform =
  * hosted on claude.ai stands beside it (the plugin loading reference, Find
  * plugins on disk, ADR-0012). Nothing else there is read.
  */
-async function pluginsRoot(directory: string, marketplace: string): Promise<PluginsRoot> {
-  const versions = join(directory, 'cache', marketplace, 'spec-harness');
-  let cached = false;
+async function pluginsRoot(directory: string, marketplace: string): Promise<PluginsRoot & { readonly versions: readonly string[] }> {
+  const versions = await cachedVersions(join(directory, 'cache', marketplace, 'spec-harness'));
+  return { directory, cached: versions.length > 0, versions, registry: await readJsonObject(join(directory, MARKETPLACE_REGISTRY)), hosted: existsSync(join(directory, HOSTED_REGISTRY)) };
+}
+
+/** The directories of a cache's versions of the plugin, under `plugin`, that no `.orphaned_at` marks as left behind. */
+async function cachedVersions(plugin: string): Promise<string[]> {
   try {
-    const entries = await readdir(versions, { withFileTypes: true });
-    cached = entries.some((entry) => entry.isDirectory() && !existsSync(join(versions, entry.name, '.orphaned_at')));
+    const entries = await readdir(plugin, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory() && !existsSync(join(plugin, entry.name, '.orphaned_at'))).map((entry) => join(plugin, entry.name));
   } catch {
     // No directory for the plugin in this cache: it holds no version of it.
+    return [];
   }
-  return { directory, cached, registry: await readJsonObject(join(directory, MARKETPLACE_REGISTRY)), hosted: existsSync(join(directory, HOSTED_REGISTRY)) };
+}
+
+/**
+ * What the plugin's hooks and server run from the project, read from each
+ * version a cache holds, `hooks/hooks.json` and `.mcp.json`, the files
+ * Claude Code loads them from; each is there where it is a file in one of
+ * `places`, where `${CLAUDE_PROJECT_DIR}` can point. Where no version is
+ * there to read, or none names a script, the plugin is the one a
+ * relative path loads, or cannot be told to be here, and the script is the
+ * one every release under `@spec-family` runs.
+ */
+async function pluginScripts(versions: readonly string[], places: readonly string[]): Promise<PluginScript[]> {
+  const there = (script: string): boolean => places.some((place) => isFile(script.split(PROJECT_DIR).join(place)));
+  const read: PluginScript[] = [];
+  for (const version of versions) {
+    for (const file of [join(version, 'hooks', 'hooks.json'), join(version, '.mcp.json')]) {
+      for (const script of projectScripts(await readJsonObject(file))) read.push({ script, file, there: there(script) });
+    }
+  }
+  return read.length > 0 ? read : [{ script: PLUGIN_SCRIPT, file: null, there: there(PLUGIN_SCRIPT) }];
 }
 
 /**
@@ -531,7 +571,11 @@ export async function claudeCodeWiring(root: string, io: CliIO, pattern: Pattern
   // equivalent to its mutant.
   const marketplace = plugin === null ? null : pluginMarketplace(plugin.id);
   const roots = marketplace === null ? [] : await Promise.all(pluginDirectories(io.env).map((directory) => pluginsRoot(directory, marketplace)));
-  const presence = plugin === null ? null : pluginPresence(plugin, sources, roots);
+  const presence = plugin === null ? null : pluginPresence(plugin, sources, roots, onCiRunner(io.env));
+  const versions = roots.flatMap((root) => root.versions);
+  // A plugin that is not on this machine, or on a runner where no session
+  // runs, starts nothing: what it would run is read only where it may.
+  const scripts = places === null || presence === null || presence.state === 'absent' || presence.state === 'unchecked' ? null : await pluginScripts(versions, places);
   const server = registersServer(await readJsonObject(join(root, '.mcp.json')));
   // A line under SessionStart is the hook's by the hook's own reading of it, as any line is.
   // A root on it that is no directory is a line of the hook that is off, and
@@ -548,7 +592,7 @@ export async function claudeCodeWiring(root: string, io: CliIO, pattern: Pattern
     // one's way: it is said, and the file is not counted for it.
     const hooks = sources.map(({ file }) => file).filter((file) => lines.some((line) => line.file === file && (isStarted(line.before) || isStarted(line.after))));
     // In the order a document has them, which a script may compare by the byte.
-    return { plugin, presence, hooksOff: hooksDisabled(sources), hooks, lines, server, sessionStart, turnEnd, release, unloaded };
+    return { plugin, presence, pluginVersions: versions.map((version) => basename(version)), pluginScripts: scripts, hooksOff: hooksDisabled(sources), hooks, lines, server, sessionStart, turnEnd, release, unloaded };
   };
   const untold = under(null);
   const asked = reported ? wiringState(untold) !== 'none' : JSON.stringify(untold.lines) !== JSON.stringify(reportHooks(sources, root, (words) => read.get(JSON.stringify(words))!, pattern));
@@ -638,6 +682,9 @@ export async function diagnoseBrief(
   options: Pick<Options, 'brief'>,
   env: CliIO['env'],
 ): Promise<{ readonly id: string | null; readonly problem: string | null; readonly branch: boolean; readonly holds: boolean; readonly archived: BriefRow | null }> {
+  // doctor fails a --brief given nothing whatever this says of the branch
+  // and of what is held, and reads nothing else of them for it, so the
+  // mutants of the two are equivalent.
   if (options.brief !== undefined && isBlank(options.brief)) return { id: null, problem: emptyValue('--brief', 'brief', options.brief), branch: false, holds: false, archived: null };
   const id = namedId(workspace, options, env);
   // Neither the flag nor SPEC_BRIEF names it, so the name is the branch's,
@@ -740,6 +787,7 @@ export async function runAudit(workspace: Workspace, brief: BriefRow, reader: Do
     unverifiedRulings: rulings.unverified,
     verifiedRulings: rulings.verified,
     pluginLoaded: plugin.kind === 'loaded',
+    pluginNamedEarlier: plugin.kind === 'earlier',
   });
   const findings = [...rulings.problems, ...report.findings];
   return {

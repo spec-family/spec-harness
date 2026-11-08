@@ -197,9 +197,10 @@ describe('the plugin', () => {
     const plugin = json('.claude-plugin/plugin.json');
     expect(plugin['name']).toBe('spec-harness');
     expect(plugin['version']).toBe(version);
-    const marketplace = json('.claude-plugin/marketplace.json') as { plugins: { name: string; source: string; version: string }[] };
+    const marketplace = json('.claude-plugin/marketplace.json') as { plugins: Record<string, unknown>[] };
     expect(marketplace.plugins).toHaveLength(1);
-    expect(marketplace.plugins[0]).toMatchObject({ name: 'spec-harness', source: './', version });
+    // The version is the manifest's alone (scripts/release.ts says why).
+    expect(marketplace.plugins[0]).toEqual({ name: 'spec-harness', source: './', description: 'Rounds of agent work under a brief.' });
   });
 
   it('names what a project installs for it as the harness finds it, at the minimum, and the family as its home', () => {
@@ -240,8 +241,88 @@ describe('the release', () => {
     expect(releaseOf(`v${version}`, version, text('CHANGELOG.md'))).toMatchObject({ version });
   });
 
-  it('carries the package version in both plugin manifests', () => {
+  it('names the repository npm checks a trusted publish against', () => {
+    // release.yml stages each version through npm's trusted publishing, with
+    // provenance, and npm refuses a package whose repository.url is not the
+    // repository the workflow ran in (ADR-0011): a typo, or a name left
+    // behind by a move, fails a release at its last step, after the matrix.
+    const pkg = json('package.json');
+    expect(pkg['repository']).toEqual({ type: 'git', url: 'git+https://github.com/spec-family/spec-harness.git' });
+    expect(pkg['bugs']).toEqual({ url: 'https://github.com/spec-family/spec-harness/issues' });
+    expect(pkg['homepage']).toBe('https://github.com/spec-family/spec-harness#readme');
+  });
+
+  it('carries the package version in the plugin manifest, and in no marketplace entry', () => {
     expect(pluginDrift(version, json('.claude-plugin/plugin.json'), json('.claude-plugin/marketplace.json'))).toBeNull();
+  });
+});
+
+/**
+ * The names the family had until it moved to the `spec-family` organization
+ * and the `@spec-family` scope on 2026-10-26 (ADR-0011): the npm scope and
+ * the GitHub owner. Neither installs or hosts anything of the family now.
+ */
+const EARLIER_NAMES = /@descent-vtt|DescentVTT\//;
+
+/**
+ * What says, in the paragraph a name stands in, that the name is of the
+ * past: the last release under it, 0.21.0; the day of the move; "an earlier
+ * release"; or, in code, a name that begins `EARLIER`, as the constants that
+ * hold what earlier releases wrote do.
+ */
+const OF_THE_PAST = /\b0\.21\.0\b|\b2026-10-26\b|\ban earlier release\b|\bEARLIER[A-Z_]*\b/;
+
+/** Each paragraph of `text`, lines with no blank line between them, that names an earlier name and says nothing of the past, by its first line. */
+function presentTense(text: string, file: string): string[] {
+  const lines = text.split('\n');
+  const found: string[] = [];
+  let start: number | null = null;
+  lines.forEach((line, index) => {
+    if (line.trim() === '') return;
+    start ??= index;
+    if (index < lines.length - 1 && lines[index + 1]!.trim() !== '') return;
+    const paragraph = lines.slice(start, index + 1).join('\n');
+    if (EARLIER_NAMES.test(paragraph) && !OF_THE_PAST.test(paragraph)) found.push(`${file}:${start + 1}`);
+    start = null;
+  });
+  return found;
+}
+
+describe('the names before the move', () => {
+  /**
+   * What a person or an agent reads as the present: the documents, the
+   * skills, the plugin, the workflows, the scripts and the sources. Left out:
+   * CHANGELOG.md and the ADRs, whose every paragraph is dated, by its
+   * release, its front matter or the amendment it stands in; the tests,
+   * which hold what earlier releases wrote as data; the lockfile; and the
+   * vendored spec-core, which is spec-core's.
+   */
+  const files = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\u0000')
+    .filter((path) => path !== '' && existsSync(join(ROOT, path)))
+    .filter((path) => path !== 'CHANGELOG.md' && path !== 'package-lock.json' && !/^docs\/adr\/\d{4}-/.test(path) && !path.startsWith('tests/') && !path.startsWith('src/vendor/'));
+
+  it('are read where they would mislead: the documents, the skills, the plugin, the workflows and the sources', () => {
+    // A directory that moved would leave the check below nothing to fail on.
+    expect(files).toEqual(
+      expect.arrayContaining(['README.md', 'CONTRIBUTING.md', 'docs/adr/README.md', 'skills/run-round/SKILL.md', '.claude-plugin/plugin.json', '.github/workflows/release.yml', 'src/configure.ts']),
+    );
+    // And the names are there to be read, each beside what dates it.
+    expect(files.filter((path) => EARLIER_NAMES.test(text(path)))).toEqual(expect.arrayContaining(['README.md', 'CONTRIBUTING.md', 'src/configure.ts']));
+  });
+
+  it('appear only beside what says they are of the past', () => {
+    expect(files.flatMap((path) => presentTense(text(path), path))).toEqual([]);
+  });
+
+  it('are found in a paragraph that names one and says nothing of the past, and not in one that dates it', () => {
+    expect(presentTense('Install @descent-vtt/spec-harness.\n', 'a.md')).toEqual(['a.md:1']);
+    expect(presentTense('Intro.\n\nSee https://github.com/DescentVTT/spec-harness\nfor more.\n', 'a.md')).toEqual(['a.md:3']);
+    expect(presentTense('As init wrote it from 0.1.2 to 0.21.0,\nnode_modules/@descent-vtt/spec-harness.\n', 'a.md')).toEqual([]);
+    expect(presentTense("const EARLIER_BIN = 'node_modules/@descent-vtt/spec-harness/bin/spec-harness.js';\n", 'a.ts')).toEqual([]);
+    expect(presentTense('@descent-vtt/spec-harness, the name until 2026-10-26.\n\n@descent-vtt/spec-guard is run here.\n', 'a.md')).toEqual(['a.md:3']);
+    expect(presentTense('The old name, @descent-vtt/spec-harness, as an earlier release wrote it.\n', 'a.md')).toEqual([]);
+    expect(presentTense('@spec-family/spec-harness, from spec-family/spec-harness.\n', 'a.md')).toEqual([]);
   });
 });
 

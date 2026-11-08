@@ -13,52 +13,46 @@
  * 012, and `brief/012x` names 012x, never 012.
  */
 
-const SEPARATORS = new Set(['-', '_', '/', '.']);
-
-function isIdChar(ch: string): boolean {
-  // Asked of one character at a time, so the mutants that drop either anchor
-  // are equivalent.
-  return /^[A-Za-z0-9]$/.test(ch);
-}
+/**
+ * An id where a template's prefix ends: the longest run of letters and
+ * digits there, followed by the end of the name or a separator. Read from
+ * the start of what follows the prefix, so that no bound on an index is
+ * written to be one past the end, which no test could tell from its mutant.
+ */
+const ID = /^[A-Za-z0-9]+(?=[-_/.]|$)/;
 
 /**
- * The offsets in `name` at which a template prefix can end, by dynamic
- * programming over prefix and name, so a template of many stars costs their
- * product and never an exponent.
+ * The offsets in `name` at which a template prefix can end, in increasing
+ * order, by dynamic programming over prefix and name, so a template of many
+ * stars costs their product and never an exponent.
+ *
+ * The offsets reached are a set, built from the name's characters and from
+ * offsets reached, never from a bound: a star reaches each offset from one
+ * it was reached at to the first slash, and a character the offset after
+ * each one it stands at. An offset at the end of the name starts no id, and
+ * a star adds none there, which is what the table this replaced said by a
+ * bound one past the end; no test could tell that bound from its mutant
+ * either way, and a sweep read some of those mutants as timeouts and some as
+ * survivors. Each set is filled in increasing order, so its own order is the
+ * one `idFromBranch` reads in.
  */
-function prefixEnds(prefix: string, name: string): number[] {
-  // reach[j]: the prefix read so far can end at name offset j.
-  // An offset nothing was written at reads as one that cannot be reached,
-  // and `forEach` passes over it. So a list made with no places, here and
-  // for `next`, is equivalent to its mutant, and so is one made two places
-  // short, for every name but the empty one, whose list would have fewer
-  // places than none: a test holds that name.
-  let reach: boolean[] = new Array<boolean>(name.length + 1).fill(false);
-  reach[0] = true;
+function prefixEnds(prefix: string, name: string): ReadonlySet<number> {
+  let reach = new Set([0]);
   for (const token of prefix) {
-    const next = new Array<boolean>(name.length + 1).fill(false);
+    const next = new Set<number>();
     if (token === '*') {
       let open = false;
-      for (let j = 0; j <= name.length; j += 1) {
-        if (reach[j]) open = true;
-        if (open) next[j] = true;
-        if (name.charAt(j) === '/') open = false;
-      }
+      name.split('').forEach((character, at) => {
+        if (reach.has(at)) open = true;
+        if (open) next.add(at);
+        if (character === '/') open = false;
+      });
     } else {
-      // One place past the end `charAt` gives the empty string, which is no
-      // token, so `<=` for `<` is equivalent.
-      for (let j = 0; j < name.length; j += 1) if (reach[j] && name.charAt(j) === token) next[j + 1] = true;
+      for (const at of reach) if (name.charAt(at) === token) next.add(at + 1);
     }
     reach = next;
   }
-  // `idFromBranch` reads an id from each offset and passes over one where
-  // none starts, which a text among them is: a list that starts with one is
-  // equivalent.
-  const ends: number[] = [];
-  reach.forEach((ok, j) => {
-    if (ok) ends.push(j);
-  });
-  return ends;
+  return reach;
 }
 
 /** Why a template cannot be used, or `null`. */
@@ -74,13 +68,8 @@ export function idFromBranch(template: string, name: string): string | null {
   if (templateError(template) !== null) return null;
   const prefix = template.slice(0, -'{id}'.length);
   for (const start of prefixEnds(prefix, name)) {
-    let end = start;
-    // Past the end `charAt` gives the empty string, which is no character of
-    // an id, so the bound is equivalent to its mutants.
-    while (end < name.length && isIdChar(name.charAt(end))) end += 1;
-    if (end === start) continue;
-    if (end < name.length && !SEPARATORS.has(name.charAt(end))) continue;
-    return name.slice(start, end);
+    const id = ID.exec(name.slice(start));
+    if (id !== null) return id[0];
   }
   return null;
 }

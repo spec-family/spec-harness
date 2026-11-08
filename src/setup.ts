@@ -19,6 +19,7 @@ import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { CONFIG_FILE } from './config.js';
 import {
   arrayMatcher,
+  BIN,
   chooseBase,
   describeAbsent,
   describeArrayMatcher,
@@ -39,6 +40,7 @@ import {
   guardSwitchedOff,
   isStarted,
   loadsEarlierPlugin,
+  namesEarlierSchema,
   loadsPlugin,
   matchingUnder,
   measuresArchive,
@@ -61,11 +63,12 @@ import {
   PROJECT_SETTINGS,
   PROTECT_RULE_FILES,
   registersServer,
+  SCHEMA_MOVED,
   SERVER_MOVED,
   SPEC_BRIEF_CONFIGS,
   SPEC_GRAPH_CONFIGS,
 } from './configure.js';
-import { readJsonObject as readJson, writeAtomic } from './fs.js';
+import { isFile, mainWorkTree, readJsonObject as readJson, writeAtomic } from './fs.js';
 import { hookPath, localBranches, remoteDefault } from './git.js';
 import { claudeCodeWiring, pluginFile } from './round.js';
 import { runSibling } from './siblings.js';
@@ -90,11 +93,15 @@ function stringify(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
+/** What init says where the project has not installed the package every way in runs. */
+export const NOT_INSTALLED = `the hooks, the server and git's hook, init's and the plugin's alike, run ${BIN}, which is not installed here: install the package, npm install --save-dev @spec-family/spec-harness, since until it is, Claude Code cannot start the hooks or the server and lets each write go ahead, and git's hook stops every commit`;
+
 const PLUGIN_DETAIL = `load spec-harness's plugin, "${PLUGIN}": spec-brief's archive asks it whether a signed ruling allows a protected file, and refuses the file without it`;
 
-/** What init adds to spec-brief's configuration, said once for the plan: the plugin added, named in place of its earlier name, or neither. */
-function specBriefDetail(plugin: 'add' | 'rename' | null, base: string | null): string {
+/** What init adds to spec-brief's configuration, said once for the plan: the plugin added, named in place of its earlier name, or neither; the schema named where it is now; and the base. */
+function specBriefDetail(plugin: 'add' | 'rename' | null, schema: boolean, base: string | null): string {
   const parts = plugin === 'add' ? [PLUGIN_DETAIL] : plugin === 'rename' ? [PLUGIN_MOVED] : [];
+  if (schema) parts.push(SCHEMA_MOVED);
   if (base !== null) parts.push(`measure the archive from ${base}, as spec-harness does: without a base, spec-brief's archive warns that the scope went unmeasured and checks no protected file`);
   return parts.join('; ');
 }
@@ -221,7 +228,7 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
       steps.push({
         file: '.spec-brief.json',
         action: 'update',
-        detail: specBriefDetail('add', base),
+        detail: specBriefDetail('add', false, base),
         apply: async () => {
           const written = await readJson(created);
           if (written === null || written === 'unreadable') throw new Error('spec-brief init wrote no configuration JSON can read');
@@ -257,7 +264,7 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
         steps.push({ file: briefConfig, action: 'keep', detail: `spec-harness's plugin is loaded${from}` });
       } else {
         const plugin = loadsEarlierPlugin(config) ? 'rename' : loadsPlugin(config, isPluginFile) ? null : 'add';
-        const detail = specBriefDetail(plugin, measured ? null : base);
+        const detail = specBriefDetail(plugin, namesEarlierSchema(config), measured ? null : base);
         steps.push({ file: briefConfig, action: 'update', detail, apply: () => writeAtomic(file, stringify(merged)) });
       }
     }
@@ -472,6 +479,17 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
     });
   } else {
     steps.push({ file: hook.file, action: 'advise', detail: missingGitHook(null) });
+  }
+
+  // Every way in runs the package's script from the project, init's lines,
+  // git's hook and the plugin alike, and starts nothing where it is not
+  // installed: Claude Code lets each write go ahead, and git's hook stops
+  // every commit (ADR-0012). Said where the script is in neither place a
+  // line can name: this work tree, and a linked worktree's main one.
+  const main = mainWorkTree(workspace.commonDir);
+  const places = main === null ? [root] : [root, main];
+  if (!places.some((place) => isFile(join(place, BIN)))) {
+    steps.push({ file: 'package.json', action: 'advise', detail: NOT_INSTALLED });
   }
 
   // The file the configuration names, which a ruling's signature is checked

@@ -288,7 +288,7 @@ export async function probeCommand(options: Options, io: CliIO): Promise<number>
         const run = await runCommand(setup, directory, timeout);
         // A setup stopped at its timeout has no exit code to have failed by,
         // and may have printed nothing: how long it was given is the reason.
-        const how = run.exitCode === null ? `was stopped after ${timeout} seconds` : 'failed';
+        const how = run.exitCode === null ? `was stopped after ${timeout} ${timeout === 1 ? 'second' : 'seconds'}` : 'failed';
         if (run.exitCode !== 0) throw new UsageError(`the probe setup "${setup}" ${how} at ${label}${run.outputHeld ? LEFT_RUNNING : ''}:\n${endOfOutput(run.output)}`);
         // A setup that passed says nothing else, and the runs after it start
         // beside what it left: on the standard error, whatever the format,

@@ -121,6 +121,24 @@ not a thing on the line: it is passed over. The server has no tool that
 lists, so nothing changes there. Input refused that was accepted is a minor
 release (spec-core's ADR-0009).
 
+*Amended 2026-11-08.* **What a ruling proves, said where rulings are
+described.** A ruling that counts proves that the agent did not sign it: a
+key the base branch's allowed-signers file lists signed the commit that
+last changed its row, and a FIDO2 key needs a person's touch. It does not
+prove that a second person decided. Nothing reads who wrote the brief or
+committed the round's work, so one person can write the brief, run the
+round and sign its rulings, and a ruling is not two-person review or
+separation of duties.
+
+A check that the signer differs from the brief's author, or from the
+author of the round's commits, was put to the maintainer in round 27, who
+decided to say what a ruling proves and add no check for now. What such a
+check would have to settle is left with that decision: git records an
+author that the round's own commits can set to any name, so whose name
+counts would need a rule of its own. The README's section on rulings says
+what a ruling proves, and that a second person deciding is the forge's
+review to require, as for any change.
+
 ## Consequences
 
 No new format, service or network: git, OpenSSH 8.1 or later (2019), and an

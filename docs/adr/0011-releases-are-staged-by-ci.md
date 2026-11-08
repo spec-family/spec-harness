@@ -236,6 +236,22 @@ with `@descent-vtt` siblings alone has none this release looks for, and
 `test (minimum siblings)` job installs what the lockfile does until a later
 one is published.
 
+*Amended 2026-11-08.* **The plugin's version is written once, in its
+manifest.** `pack` held both plugin manifests to the package's version:
+`.claude-plugin/plugin.json` and the plugin's entry in
+`.claude-plugin/marketplace.json`. Claude Code reads the manifest's
+`version` before the entry's, whatever `strict` says, and
+`claude plugin validate` warns where both name one (the manifest
+reference, *Metadata precedence*, and the marketplace reference, *Plugin
+entries*: https://code.claude.com/docs/en/plugins/manifest-reference and
+https://code.claude.com/docs/en/plugins/marketplace-reference, read
+2026-11-08). So the entry's version was read by nothing but the warning.
+The entry names none now, and `scripts/release.ts` holds the manifest to the
+package's version and the entry to having none: a version on it fails
+`pack` and the test suite, as a manifest at another version does. The
+version Claude Code installs and names its cache directory by is the one it
+was, the manifest's.
+
 ## Consequences
 
 - A maintainer sets up npmjs.com once: publish the placeholder; in the
