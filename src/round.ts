@@ -134,13 +134,17 @@ export async function checkRulings(workspace: Workspace, brief: Pick<BriefRow, '
     const reason = `${base.ref} has no ${workspace.config.rulings.allowedSigners}, so no signature can count`;
     return { rows, verified: [], unverified: allows.map((row) => ({ id: row.id, reason })), problems: findings };
   }
-  // Only verify-commit below reads this copy, so where it is kept, and under
-  // what name, is equivalent to its mutants. The one that reads the digest
-  // with no encoding names the file by its bytes, which a path refuses when
-  // one of them is NUL: a sweep counts that mutant killed now and then.
+  // Only verify-commit below reads this copy, so where it is kept is
+  // equivalent to its mutants. It is named by the whole digest, read as hex
+  // from its bytes: a digest asked for in no encoding, which a mutant of
+  // `digest('hex')` asked for, named the file by bytes a path refuses when
+  // one of them is NUL, so a sweep counted that mutant killed in some runs
+  // and survived in others, by the bytes of the run's temporary paths. A
+  // buffer refuses to be read in no encoding, every time, and the whole
+  // digest has no cut that a mutant can leave out unseen.
   const directory = await stateDirectory(workspace.commonDir, 'signers');
   const { createHash } = await import('node:crypto');
-  const file = join(directory, `${createHash('sha256').update(signers).digest('hex').slice(0, 16)}`);
+  const file = join(directory, createHash('sha256').update(signers).digest().toString('hex'));
   await writeAtomic(file, signers);
   const verified: VerifiedRuling[] = [];
   const unverified: { id: string; reason: string }[] = [];

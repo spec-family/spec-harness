@@ -99,6 +99,72 @@ describe('the id a branch carries', () => {
   });
 });
 
+/**
+ * The reading this module had until 2026-11-08, as it was, but for its
+ * comments: a table of booleans one place past the end of the name, and
+ * bounds no test could tell from their mutants, of which a sweep read some
+ * as timeouts and some as survivors. The reading now is held to it here.
+ */
+function previousIdFromBranch(template: string, name: string): string | null {
+  if (templateError(template) !== null) return null;
+  const prefix = template.slice(0, -'{id}'.length);
+  let reach: boolean[] = new Array<boolean>(name.length + 1).fill(false);
+  reach[0] = true;
+  for (const token of prefix) {
+    const next = new Array<boolean>(name.length + 1).fill(false);
+    if (token === '*') {
+      let open = false;
+      for (let j = 0; j <= name.length; j += 1) {
+        if (reach[j]) open = true;
+        if (open) next[j] = true;
+        if (name.charAt(j) === '/') open = false;
+      }
+    } else {
+      for (let j = 0; j < name.length; j += 1) if (reach[j] && name.charAt(j) === token) next[j + 1] = true;
+    }
+    reach = next;
+  }
+  const ends: number[] = [];
+  reach.forEach((ok, j) => {
+    if (ok) ends.push(j);
+  });
+  for (const start of ends) {
+    let end = start;
+    while (end < name.length && /^[A-Za-z0-9]$/.test(name.charAt(end))) end += 1;
+    if (end === start) continue;
+    if (end < name.length && !['-', '_', '/', '.'].includes(name.charAt(end))) continue;
+    return name.slice(start, end);
+  }
+  return null;
+}
+
+/** Every string of `alphabet` up to `longest` characters, the empty one first. */
+function strings(alphabet: readonly string[], longest: number): string[] {
+  const all = [''];
+  let last = [''];
+  for (let length = 1; length <= longest; length += 1) {
+    last = last.flatMap((head) => alphabet.map((character) => head + character));
+    all.push(...last);
+  }
+  return all;
+}
+
+describe('the reading as it was', () => {
+  it('reads every short name under every short template as the table one place past the end did', () => {
+    // A star, a slash, a separator and a letter in templates; in names, that
+    // letter, a digit, which no template has, a slash, a separator and a
+    // character that ends no id.
+    const templates = strings(['*', '/', '-', 'a'], 3).map((prefix) => `${prefix}{id}`);
+    const names = strings(['a', '1', '/', '-', '+'], 4);
+    const differing = templates.flatMap((template) =>
+      names.filter((name) => idFromBranch(template, name) !== previousIdFromBranch(template, name)).map((name) => `${template} ${name}`),
+    );
+    expect(differing).toEqual([]);
+    // What the two are held to is not nothing: an id is read under some.
+    expect(templates.filter((template) => names.some((name) => idFromBranch(template, name) !== null)).length).toBeGreaterThan(templates.length / 2);
+  });
+});
+
 describe('id equality', () => {
   it('matches ids as written, or as numbers when both are all digits', () => {
     expect(sameId('012', '012')).toBe(true);
