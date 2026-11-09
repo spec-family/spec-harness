@@ -1,12 +1,47 @@
-import { relative } from 'node:path';
+import { statSync } from 'node:fs';
 
 import { defineConfig } from 'vitest/config';
-import { BaseSequencer, type TestSpecification } from 'vitest/node';
+import { BaseSequencer, type Reporter, type TestModule, type TestSpecification } from 'vitest/node';
 
 /**
- * The order a mutant's test files run in: a file that failed in the worker's
- * last run first, as vitest has it, then the quickest first, where vitest
- * runs the longest first.
+ * Whether each test file failed when this process last ran it, as vitest 4's
+ * cache had it and vitest 5's does not.
+ *
+ * Stryker narrows each mutant's run to the tests that cover it, by a test name
+ * pattern, and stops a run at its first failure. Vitest 5 counts either run as
+ * partial, and from a partial run its cache takes a failure and keeps it until
+ * a run of the whole file passes; it also reads back what the other workers
+ * write to the same cache file. So in a sweep a file that killed one mutant,
+ * in any worker, stayed failed for every mutant after it, and the order lost
+ * the file that killed the last mutant (spec-core's ADR-0008, amended
+ * 2026-11-08). So the order keeps its own record, by vitest 4's rule: a file
+ * that passed or failed in a run has that verdict until a run runs it again,
+ * and a file the run skipped or did not reach keeps the one it had. Vitest
+ * calls the sequencer and the reporters in the one process that drives the
+ * worker, so the record lives in that process's memory, with no file to name
+ * or clean up, and dies with it.
+ *
+ * The times stay the cache's, on vitest 5 the dry run's, of each whole file,
+ * where vitest 4 took each run's, narrowed or stopped. A record of each run's
+ * time as well, swept in spec-core, read no better (its ADR-0007,
+ * 2026-11-09).
+ */
+const failedLast = new Map<string, boolean>();
+
+/** The reporter that keeps the record above, named in the suite below. */
+export const lastRun = {
+  // No `onInit`: vitest 5 calls it at the start of every run, which would
+  // empty the record before each sort (spec-core's ADR-0007, 2026-11-09).
+  onTestModuleEnd(module: TestModule): void {
+    const state = module.state();
+    if (state === 'passed' || state === 'failed') failedLast.set(module.moduleId, state === 'failed');
+  },
+} satisfies Reporter;
+
+/**
+ * The order a mutant's test files run in: a file that failed when this process
+ * last ran it first, as vitest 4 had it, then the quickest first, where
+ * vitest runs the longest first.
  *
  * Stryker runs a mutant's files one after another in one worker and stops at
  * the first test that fails. A static mutant runs every file, so what it
@@ -24,17 +59,22 @@ import { BaseSequencer, type TestSpecification } from 'vitest/node';
  * survivors, and its files took 95 minutes where they had taken 183.
  *
  * A file the worker has not run yet has no time to go by. It runs after
- * those that have, the smaller first, and has a time from then on.
+ * those that have, the smaller first, and has a time from then on. Vitest 5
+ * asks its cache by a file's specification and keeps no sizes, reading them
+ * from the disk where a file has no time; so does this.
+ *
+ * The core sweep's suite runs its files in this order too, with the record
+ * above (`vitest.core.config.ts`), for the same reasons.
  */
 export class QuickestFirst extends BaseSequencer {
   override async sort(files: TestSpecification[]): Promise<TestSpecification[]> {
-    const { cache, config } = this.ctx;
+    const { cache } = this.ctx;
     const rank = (file: TestSpecification): [number, number] => {
-      // The key vitest's own sequencer reads its cache by; a test holds the two together.
-      const key = `${file.project.name}:${relative(config.root, file.moduleId).replaceAll('\\', '/')}`;
-      const last = cache.getFileTestResults(key);
-      if (last === undefined) return [2, cache.getFileStats(key)?.size ?? 0];
-      return [last.failed ? 0 : 1, last.duration];
+      // What vitest's own sequencer asks its cache; a test holds the two
+      // together. Its `failed` is not read: that is the record's.
+      const last = cache.getTestSpecificationResult(file);
+      if (last === undefined) return [2, statSync(file.moduleId, { throwIfNoEntry: false })?.size ?? 0];
+      return [failedLast.get(file.moduleId) === true ? 0 : 1, last.duration];
     };
     const ranked = files.map((file) => ({ file, rank: rank(file) }));
     return ranked.sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1]).map(({ file }) => file);
@@ -67,7 +107,7 @@ export class QuickestFirst extends BaseSequencer {
  *
  * The rest is `vitest.config.ts`'s, for the same processes, less its v8
  * coverage, which Stryker replaces with its own per test, with the order
- * above and with a reporter named; a test holds the two files together.
+ * above and with its reporters named; a test holds the two files together.
  */
 export default defineConfig({
   test: {
@@ -79,7 +119,8 @@ export default defineConfig({
     sequence: { sequencer: QuickestFirst },
     // Named, for the reason `vitest.core.config.ts` gives. Each shard is a
     // step of its own, and none came to GitHub's 1MiB, but each added a
-    // summary a mutant all the same.
-    reporters: ['default'],
+    // summary a mutant all the same. The other keeps the order's record and
+    // writes nothing.
+    reporters: ['default', lastRun],
   },
 });

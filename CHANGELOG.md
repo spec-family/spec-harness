@@ -9,6 +9,26 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Changed
+
+- **The suite and both mutation sweeps run on vitest 5.0.5, and the hold on
+  4 is lifted.** Stryker 10.1's vitest runner reads vitest 5's test names
+  (stryker-js #6210), and spec-core took vitest 5 with the sweep reading as
+  main's (its ADR-0008). Dependabot proposes vitest's majors again, and no
+  test fails one. The sweeps' order keeps its own record of the test file
+  that failed when the worker last ran it, a reporter in
+  `vitest.mutation.config.ts`, since vitest 5's cache keeps a failure from a
+  narrowed run until a run of the whole file passes; the core sweep takes
+  that order and its record too, where it had vitest's longest-first. The
+  full sweep read 98.01% over 12,601 mutants against main's 98.00%, with no
+  undetected mutant new, and its mutants that are not static ran 3.79 tests
+  to a kill against 3.81 to 3.86 on vitest 4. The core sweep read main's
+  verdicts, 98.69% over 7,305, at 7.47 tests to a kill against 9.20 to 9.81
+  (ADR-0010, amended 2026-11-09). Upgrading: nothing; no module changes, and
+  nothing the tool prints, exits with or answers.
+
 ## 0.24.1
 
 The README is a front page, and the reference ships in the package, in

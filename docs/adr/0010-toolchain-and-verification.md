@@ -296,6 +296,8 @@ few minutes.
 to 95.
 
 *Amended 2026-10-07.* **Vitest stays on 4 until Stryker's runner reads 5.**
+(*Amended 2026-11-09*: the hold is lifted, by the steps below; the
+amendment of that date has what the two sweeps read.)
 The Decision's "Vitest 4.1" was the family's choice of a line that had
 aged; it is now a hold with a cause. On vitest 5,
 `@stryker-mutator/vitest-runner` 10.0.0, the newest there is, runs no test
@@ -1243,3 +1245,127 @@ beside them, and one `round.ts`'s, `'hex'` made empty, which the record of
   mutant to leave out unseen. Written into the source, it and `'sha256'`
   made empty each failed `tests/integration/rulings.test.ts`. Where the
   copy is kept, `'signers'`, stays equivalent, and is said beside it.
+
+*Amended 2026-11-09.* **Vitest 5, and the order's own record of the file
+that failed last.** Stryker 10.1.0, of 2026-10-23, names "support vitest
+v5" (#6214) in its notes: its vitest runner joins a test's name with ` > `
+where it finds vitest 5 or later, which is what
+[#6210](https://github.com/stryker-mutator/stryker-js/issues/6210) asked
+for, and Dependabot brought both packages to 10.1.1 here on 2026-11-08
+(pull request 144).
+spec-core took vitest 5 the same day, with both conditions of
+[its ADR-0008](https://github.com/spec-family/spec-core/blob/main/docs/adr/0008-toolchain.md)
+met (its #57), and gave its sweep's order a record of its own (its #67).
+This is step 4 of that ADR here, in pull request 156, and the
+Decision's "Vitest 4.1" is vitest 5.0 from it.
+
+**What changed.** `vitest` and `@vitest/coverage-v8` went to 5.0.5, the
+version spec-core runs, and both Stryker packages are asked for at 10.1.1,
+where the range admitted 10.0.0, which reads no test on vitest 5. The hold
+went in the same change: the two vitest entries under `ignore` in
+`.github/dependabot.yml` and the test in `tests/source.test.ts`. Two tests
+in `tests/mutation-shards.test.ts` failed on vitest 5, each on a change of
+vitest's own: a sequencer asks the cache by a file's specification
+(`getTestSpecificationResult`), and the cache keeps no sizes, which vitest's
+own sequencer reads from the disk; and `resolveConfig` returns Vite's
+resolved configuration, vitest's under `test`, with the reporters of a
+suite that names none decided when vitest is first imported, so the test
+resolves each suite in a process started with `GITHUB_ACTIONS` set.
+`QuickestFirst` asks what vitest's sequencer asks and reads a size as it
+does; a file never run still runs after those that have, the smaller first.
+
+**The record.** Vitest 5's cache keeps a failure from a run a test name
+pattern narrows, or that stops at its first failure, until a run of the
+whole file passes, and Stryker's workers share it, so a file that killed
+one mutant would run first for every mutant after it, in every worker
+(spec-core's ADR-0007, 2026-11-09, has how that read there). The full
+sweep's order now keeps its own record, copied whole from spec-core: a
+reporter, `lastRun`, named after `'default'` in
+`vitest.mutation.config.ts`, records each file's verdict at its end, and
+`QuickestFirst` reads that record where it read the cache's `failed`. The
+times stay the cache's. The reporter has no `onInit`, which vitest 5 calls
+at the start of every run.
+
+**The core sweep takes both.** `vitest.core.config.ts` named no sequencer,
+so the core sweep ran vitest's own order: a file the cache has failed
+first, then the longest first. On vitest 5 that order lost the last
+failure as the full sweep's had, and the pull request's first core sweep,
+with the record in the full sweep alone, read main's verdicts and ran its
+killed mutants 15.47 tests to a kill where main's read 9.20 to 9.81 (the
+table below). So the core sweep's suite takes `QuickestFirst` and `lastRun`
+from `vitest.mutation.config.ts`, one class and one reporter, and its order
+changes from vitest's longest-first to the quickest first as well, for the
+reason the full sweep's is that (the amendment of 2026-10-09): Stryker
+stops a mutant's run at its first failing test, so what a mutant costs is
+the files that run before the one that kills it, and vitest's order suits a
+run that reports every failure. The maintainer chose this on 2026-11-09.
+
+**Tests.** `tests/mutation-shards.test.ts` holds the record as spec-core's
+tests do, with a test that drives five narrowed runs as Stryker's runner
+does and takes the order inside each, run for each sweep's configuration,
+and holds the core suite to the full suite's class and reporter. Breaks put
+in by hand one at a time each failed a test: the failure read from the
+cache, an emptying `onInit`, the full suite's reporter not named, every
+state recorded, a pass recorded as a failure, and the core suite without
+its `lastRun` or without its sequencer. The `onInit` failed the test
+through vitest alone, for both suites.
+
+**What the sweeps read.** "Tests to a kill" is the mean of the tests a
+killed mutant completed, the one that failed among them; "by the first"
+counts the killed mutants whose first test failed. The full sweep of
+f5aff90, which has the record in the full sweep's suite alone, beside the
+three latest of main, on vitest 4.1.12:
+
+| | Main, 3335d35 | Main, 68b86a1 | Main, cc9cab1 | f5aff90 |
+| --- | ---: | ---: | ---: | ---: |
+| Run | 42504548255 | 42509425751 | 42513980035 | 42608690965 |
+| Mutants | 12,435 | 12,531 | 12,601 | 12,601 |
+| Killed, timed out, survived, without coverage | 12,102, 83, 223, 27 | 12,192, 87, 225, 27 | 12,269, 80, 225, 27 | 12,273, 77, 224, 27 |
+| Score | 97.99% | 97.99% | 98.00% | 98.01% |
+| Survived, covered, untested | 0 | 0 | 0 | 0 |
+| Runtime errors | 0 | 0 | 0 | 0 |
+| Tests to a kill | 15.90 | 11.84 | 12.31 | 17.35 |
+| Those of the killed mutants that are not static | 3.84 | 3.86 | 3.81 | 3.79 |
+| The static mutants', in all | 153,178 | 104,507 | 111,498 | 173,480 |
+| By the first | 7,043 | 7,123 | 7,189 | 7,132 |
+| Eight shards | 234m41s | 229m05s | 232m14s | 237m46s |
+| The slowest shard | 52m27s | 38m16s | 48m04s | 53m50s |
+
+Both conditions of spec-core's ADR-0008 held: 0.01 of a point apart, and
+no survivor ran no test. `scripts/mutation-compare.mjs`, in the merge job,
+found no undetected mutant new against cc9cab1's and one gone:
+`src/config.ts` 231, `command[0]?.trim` made `command[0].trim`, which the
+comment beside it calls equivalent. It is a static mutant, survived after
+1,705 to 1,714 tests in the three sweeps of main, and timed out here: a
+static survivor runs every test file, and where that run passes its limit
+the clock decides it. Twelve more went between killed and timed out, eight
+to killed and four to timed out, each detected either way. By the third
+condition, the mutants that are not static ran 3.79 tests to a kill, at the
+foot of vitest 4's 3.81 to 3.86. The static ones ran 173,480 tests before
+their kills, above vitest 4's 104,507 to 153,178, as spec-core's did with
+the record, where why is not explained (its ADR-0007, 2026-11-09). The
+slowest shard, the seventh, took 53m50s, where main's seventh took 38m16s
+to 52m27s.
+
+The core sweep, beside the four latest of main on vitest 4.1.12: f5aff90's
+in vitest's order, and a420a4e's in the full sweep's order with the record:
+
+| | Main, b958709 | Main, 2838626 | Main, 2597078 | Main, 58e9e1b | f5aff90, vitest's order | a420a4e, the record |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Run | 42553300482 | 42573070951 | 42576240687 | 42582577857 | 42608691005 | 42616364842 |
+| Tests to a kill | 9.20 | 9.81 | 9.23 | 9.32 | 15.47 | 7.47 |
+| Those of the killed mutants that are not static | 2.79 | 2.78 | 2.81 | 2.80 | 3.65 | 2.72 |
+| The 492 static mutants', in all | 47,355 | 51,833 | 47,454 | 48,196 | 86,713 | 35,454 |
+| By the first | 4,550 | 4,552 | 4,550 | 4,553 | 4,441 | 4,560 |
+| Killed after more than 200 tests | 57 | 67 | 59 | 60 | 123 | 40 |
+| The job | 13m59s | 9m23s | 14m22s | 10m56s | 16m21s | 13m37s |
+
+The six read the same verdicts, mutant by mutant: 98.69% over 7,305, with
+7,182 killed, 27 timed out, 87 survived and 9 without coverage, none
+survived, covered and untested, and no runtime error. In vitest's order on
+vitest 5 a killed mutant ran six tests more before its kill, and the static
+ones nearly twice as many. In the full sweep's order with the record every
+count is at or past vitest 4's, the static mutants' most of all: in
+vitest's order a static mutant ran the longest unit files first. The job
+took 13m37s, within main's 9m23s to 14m22s, which is what one runner
+differs from another by.
