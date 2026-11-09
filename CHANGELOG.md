@@ -9,7 +9,16 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
-## Unreleased
+## 0.24.0
+
+`doctor` fails a project the plugin guards that has not installed the
+package its hooks run, and requires no plugin on a CI runner; it fails an
+empty `--brief` or `--base`, and reads the configured base as the remote's
+branch on a checkout that has no local one. The MCP server starts where the
+configuration does not load, and the line as a session starts says which
+writes go ahead
+([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md),
+[ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
 
 ### Changed
 

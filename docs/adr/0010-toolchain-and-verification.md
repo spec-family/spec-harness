@@ -233,6 +233,24 @@ only a real `git commit` reached, through the built script in a process of
 its own where no mutant runs, and the second, with that path asked in
 process and the equivalent one written away, none.
 
+For 0.24.0 the sweep of cc9cab1 (run 42513980035) read 98.00% over 12,601
+mutants, 97.37% with every timeout lost, in shards of 9m34s to 47m53s, and
+the `break` stays 95. It has 353 mutants more than 0.23.0's sweep (run
+41449993320, of 8960e5f): `configure.ts` with 188 of them, what `doctor`
+reads of the plugin, of the package its hooks run and of a line it cannot
+check, `cli.ts` with 73 and `round.ts` with 64, and 40 fewer in `branch.ts`,
+read without index bounds. Of 0.23.0's 234 survivors and 27 without
+coverage, 11 survivors are gone: nine in `branch.ts` and the signers' copy
+named by sixteen characters of its digest, which no clock or chance decides
+now (amended 2026-11-08, below), and the empty list of plugin directories in
+`round.ts` for an id that names no marketplace, an equivalent mutant until
+the plugin's versions were read from that list. Two are new, the `branch`
+and `holds` an empty `--brief` gives in `diagnoseBrief`, `false` made
+`true`: equivalent, as the comment beside them says, since `doctor` fails a
+`--brief` given nothing and reads neither for it. Each of the release's six
+pull requests was swept before it merged, and each ended with no undetected
+mutant new against main's but those two.
+
 One runner took 69 to 130 minutes for the full sweep. Before any sharded
 sweep ran, the report of eb39599 was cut into shards the way Stryker writes
 them and put back by the merge: all 7,507 verdicts came back with their
