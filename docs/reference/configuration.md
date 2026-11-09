@@ -1,0 +1,17 @@
+# Configuration
+
+`.spec-harness.json` at the repository root. Every key is optional; an unknown key stops the run with exit 2.
+
+| Key | Default | What it says |
+| --- | --- | --- |
+| `branches` | `brief/{id}`, `brief-{id}`, `*/brief/{id}`, `*/brief-{id}` | Branch names that carry the active brief's id. |
+| `outOfScope` | `"warn"` | A write outside `affectedFiles`: `warn`, `ask` or `deny`. |
+| `base` | the remote's default branch | What rounds are measured from, and where allowed signers are read. `init` names it, since a repository git did not clone may have no default branch recorded. Where the name reads as no commit here, as in a CI checkout that fetched the base as `origin/main` alone, the remote's branch of that name is the base, `remotes/origin/<name>`. |
+| `rulings.section` | `"Rulings"` | The brief section holding the rulings table. |
+| `rulings.allowedSigners` | `".github/allowed_signers"` | The allowed-signers file, read from the base branch. |
+| `dependencies.manifests` | the list under [`audit`](audit.md) | Manifest names whose added dependencies the audit reports, and, in a `package.json`, the install scripts it allowed. A name that cannot be read is a warning in the audit. |
+| `context.budget` | `60000` | Characters a context packet may hold; cited documents fill what the rest leaves, and those that do not fit are named by path. |
+| `assertions.premises` | `The Defect, Measured`, `Premises`, `Preconditions` | Sections whose assertions state what was true before the round. |
+| `probes.runs`, `probes.timeout` | `2`, `600` | Runs per probe, and seconds per run. |
+| `tools` | found in `node_modules` | A sibling's command by name: `{ "spec-brief": ["node", "path/to/spec-brief.js"] }`. |
+| `turnReport` | `false` | `true`: as each of Claude Code's turns ends, the hook reports every changed path the brief protects or that is outside its scope, to Claude as the next turn begins ([`guard` and the hooks](guard.md)). `init` writes the entry that runs it where it is on. |

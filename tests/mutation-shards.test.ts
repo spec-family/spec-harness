@@ -757,6 +757,7 @@ describe('this repository', () => {
         'package.json',
         'package-lock.json',
         'README.md',
+        'docs/reference/doctor.md',
         'docs/adr/0010-toolchain-and-verification.md',
         '.github/workflows/ci.yml',
         'scripts/release.ts',

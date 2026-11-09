@@ -237,7 +237,10 @@ describe('the commands this repository writes', () => {
   const all = files();
   const runs = all.flatMap((file) => bareRuns(read(file), file));
   const readme = read('README.md');
+  const reference = all.filter((file) => file.startsWith('docs/reference/'));
   const skills = all.filter((file) => /^skills\/[^/]+\/SKILL\.md$/.test(file));
+  /** How often `text` runs this package through the project's install. */
+  const fullRuns = (text: string): number => text.match(/npx --no-install @spec-family\/spec-harness\b/g)?.length ?? 0;
 
   it('are read: the documents, the records, the skills, the plugin, the workflows, the scripts and the sources', () => {
     // A directory that moved, or an extension this file no longer reads,
@@ -249,6 +252,7 @@ describe('the commands this repository writes', () => {
         'CONTRIBUTING.md',
         'SECURITY.md',
         'docs/adr/0012-one-way-into-claude-code.md',
+        'docs/reference/install.md',
         '.github/workflows/ci.yml',
         '.github/workflows/release.yml',
         '.claude-plugin/plugin.json',
@@ -261,8 +265,13 @@ describe('the commands this repository writes', () => {
       ]),
     );
     expect(skills).toEqual(['skills/close-round/SKILL.md', 'skills/draft-brief/SKILL.md', 'skills/run-round/SKILL.md', 'skills/split-goal/SKILL.md']);
-    // The README is where a person's commands are: the quick start, the form under Names, the rulings, the CI job.
-    expect(readme.match(/npx --no-install @spec-family\/spec-harness\b/g)?.length ?? 0).toBeGreaterThanOrEqual(9);
+    // The README and the reference are where a person's commands are: the
+    // quick start, the form under Names, the rulings and the CI job on the
+    // front page, and on the reference's pages the rulings, the CI job for a
+    // forge, the plugin and a repository that is not Node.
+    expect(fullRuns(readme)).toBeGreaterThanOrEqual(9);
+    expect(reference).toEqual(expect.arrayContaining(['docs/reference/install.md', 'docs/reference/rulings.md', 'docs/reference/audit.md']));
+    expect(fullRuns(reference.map(read).join('\n'))).toBeGreaterThanOrEqual(7);
   });
 
   it("give a runner the package's full name, never the command's alone", () => {
@@ -270,13 +279,15 @@ describe('the commands this repository writes', () => {
   });
 
   it('show the bare form only as what not to write, or as what an earlier release wrote, in the places listed', () => {
-    // A place joins this list on purpose, with the comment over it: the README's
-    // Names, the hook `init` wrote through 0.9.1 as the changelog and ADR-0012
-    // record it, and the entry of 0.1 that `init` reads in order to replace it.
+    // A place joins this list on purpose, with the comment over it: Names in
+    // the README and in the reference, the hook `init` wrote through 0.9.1 as
+    // the changelog and ADR-0012 record it, and the entry of 0.1 that `init`
+    // reads in order to replace it.
     expect([...new Set(runs.flatMap((run) => (run.shownBy === null ? [] : [run.where.split(':')[0]])))]).toEqual([
       'CHANGELOG.md',
       'README.md',
       'docs/adr/0012-one-way-into-claude-code.md',
+      'docs/reference/install.md',
       'src/configure.ts',
     ]);
     // And a comment with nothing under it has outlived what it stood over.
@@ -291,13 +302,21 @@ describe('the commands this repository writes', () => {
     expect(first.slice(1).filter((line) => !/^npx --no-install @spec-family\/spec-harness(?: |$)/.test(line))).toEqual([]);
   });
 
-  it('say whose the name is where a reader looks, under the quick start', () => {
+  it('say whose the name is where a reader looks, under the quick start, and in full in the reference', () => {
     // As a reader sees it: a sentence is one line, wherever the file wraps it.
-    const section = (/^## Names$([\s\S]*?)^## /m.exec(readme)?.[1] ?? '').replace(/\s+/g, ' ');
-    expect(section).toContain('The package is `@spec-family/spec-harness`, and the command it installs is `spec-harness`.');
-    expect(section).toContain("The name without the scope is not this project: on npm, `spec-harness` is another publisher's package");
-    expect(section).toContain('`npx --no-install @spec-family/spec-harness`');
-    expect(section).toContain('`npx @spec-family/spec-harness`');
+    const namesOf = (text: string): string => (/^## Names$([\s\S]*?)^## /m.exec(text)?.[1] ?? '').replace(/\s+/g, ' ');
+    const section = namesOf(readme);
+    const full = namesOf(read('docs/reference/install.md'));
+    for (const said of [section, full]) {
+      expect(said).toContain('The package is `@spec-family/spec-harness`, and the command it installs is `spec-harness`.');
+      expect(said).toContain("The name without the scope is not this project: on npm, `spec-harness` is another publisher's package");
+      expect(said).toContain('`npx --no-install @spec-family/spec-harness`');
+      expect(said).toContain('`npx @spec-family/spec-harness`');
+    }
+    // The front page links to the rest: npm's cache of fetched commands, and the siblings' names.
+    expect(section).toContain('](docs/reference/install.md#names)');
+    expect(full).toContain('the `_npx` directory below the path `npm config get cache` prints');
+    expect(full).toContain('`@spec-family/spec-brief`, `@spec-family/spec-guard` and `@spec-family/spec-graph`');
     // The quick start comes first, and the names are the next section under
     // it. A `## ` inside a fence is an example's, not a heading.
     let fenced = false;

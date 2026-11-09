@@ -9,6 +9,23 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Documentation
+
+- **The README is a front page, and the reference ships in the package.**
+  The README says what spec-harness is, a quick start with what `init` and
+  `guard` print, the commands, hooks and MCP tools at a glance, the plugin,
+  a `doctor` step for CI and the mutation scores, in 2,652 words where it
+  had 18,433. Everything else it said moved, word for word, to
+  `docs/reference/`: a page for installing, one for a round, one for each
+  command, the command line's options and exit codes, and the
+  configuration. `docs/reference/` is in the package's `files`, so the copy
+  a project installs describes the release it runs, and the README links to
+  it relatively. The README keeps the headings other documents link to,
+  each over a summary that links to its page. Nothing the tool prints,
+  exits with or answers changes.
+
 ## 0.24.0
 
 `doctor` fails a project the plugin guards that has not installed the
@@ -1198,7 +1215,7 @@ line a release's `init` wrote is read as it was.
   take --note; its options are --brief, --base, --root, --format and
   --strict`
   ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md),
-  [An input that names nothing](README.md#an-input-that-names-nothing)).
+  [An input that names nothing](docs/reference/command-line.md#an-input-that-names-nothing)).
   Upgrading: drop the option. The README's table has what each command
   reads; `--strict` is for `guard`, `audit`, `premises` and `doctor`, and
   `init` and `mcp` take neither `--brief` nor `--base`.
