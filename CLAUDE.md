@@ -106,10 +106,12 @@ measurement, and spec-core's
 the steps. Vitest 5's cache keeps a failure from a run a test name pattern
 narrows until a run of the whole file passes, so the full sweep's order
 keeps its own record of the file that failed when the worker last ran it,
-`lastRun` in `vitest.mutation.config.ts`. The reporter has no `onInit`:
-vitest 5 calls that at the start of every run, which would empty the record
-before each sort, and `tests/mutation-shards.test.ts` fails with one put
-back.
+`lastRun` in `vitest.mutation.config.ts`, and the core sweep's suite takes
+the order and the record from there, where it had vitest's longest-first.
+The reporter has no `onInit`: vitest 5 calls that at the start of every
+run, which would empty the record before each sort, and
+`tests/mutation-shards.test.ts` fails with one put back, or with either
+suite left without the order or the record.
 
 Run a tool through `npm run <script>` or `npx --no-install <tool>`, never a
 bare `npx <name>`: before `npm ci` that fetches whatever the registry has

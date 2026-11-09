@@ -62,6 +62,9 @@ export const lastRun = {
  * those that have, the smaller first, and has a time from then on. Vitest 5
  * asks its cache by a file's specification and keeps no sizes, reading them
  * from the disk where a file has no time; so does this.
+ *
+ * The core sweep's suite runs its files in this order too, with the record
+ * above (`vitest.core.config.ts`), for the same reasons.
  */
 export class QuickestFirst extends BaseSequencer {
   override async sort(files: TestSpecification[]): Promise<TestSpecification[]> {

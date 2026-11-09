@@ -519,27 +519,28 @@ describe("the order a mutant's test files run in", () => {
 
   /**
    * Stryker's vitest runner as it runs one mutant after another, in a process
-   * of its own: a vitest made from this configuration with the options the
-   * runner gives it, and runs of both files narrowed by a test name pattern,
-   * each after clearing the files of the run before. Of each run, the order
-   * vitest ran the two files in, as the sequencer it resolved gave that order
-   * inside the run, and whether vitest's cache had `long` failed after it:
-   * `short`, whose test takes 50 ms, and `long`, whose tests take 200, none
-   * and none, the second failing.
+   * of its own: a vitest made from a sweep's configuration with the options
+   * the runner gives it, and runs of both files narrowed by a test name
+   * pattern, each after clearing the files of the run before. Of each run,
+   * the order vitest ran the two files in, as the sequencer it resolved gave
+   * that order inside the run, and whether vitest's cache had `long` failed
+   * after it: `short`, whose test takes 50 ms, and `long`, whose tests take
+   * 200, none and none, the second failing, both where both suites look for
+   * tests.
    */
   type Run = { order: string[]; failed: boolean };
-  function asStrykerRuns(patterns: readonly string[]): Run[] {
+  function asStrykerRuns(config: string, patterns: readonly string[]): Run[] {
     const root = mkdtempSync(join(tmpdir(), PREFIX));
     try {
-      mkdirSync(join(root, 'tests'));
+      mkdirSync(join(root, 'tests/unit'), { recursive: true });
       const pause = (ms: number) => `await new Promise((end) => setTimeout(end, ${ms}));`;
-      writeFileSync(join(root, 'tests/short.test.ts'), `test('short holds', async () => { ${pause(50)} });`);
-      writeFileSync(join(root, 'tests/long.test.ts'), `test('long holds', async () => { ${pause(200)} }); test('long breaks', () => { throw new Error('broken'); }); test('long quick', () => {});`);
+      writeFileSync(join(root, 'tests/unit/short.test.ts'), `test('short holds', async () => { ${pause(50)} });`);
+      writeFileSync(join(root, 'tests/unit/long.test.ts'), `test('long holds', async () => { ${pause(200)} }); test('long breaks', () => { throw new Error('broken'); }); test('long quick', () => {});`);
       const script = `
         import { createVitest } from 'vitest/node';
         const ctx = await createVitest('test', {
           root: ${JSON.stringify(root)},
-          config: ${JSON.stringify(join(ROOT, 'vitest.mutation.config.ts'))},
+          config: ${JSON.stringify(join(ROOT, config))},
           globals: true, watch: false, pool: 'forks', maxWorkers: 1, maxConcurrency: 1, bail: 1, coverage: { enabled: false },
         });
         const name = (file) => file.moduleId.slice(file.moduleId.lastIndexOf('/') + 1, -'.test.ts'.length);
@@ -550,7 +551,7 @@ describe("the order a mutant's test files run in", () => {
           orders.push(sorted.map(name));
           return sorted;
         };
-        const files = ['short', 'long'].map((file) => ctx.config.root + '/tests/' + file + '.test.ts');
+        const files = ['short', 'long'].map((file) => ctx.config.root + '/tests/unit/' + file + '.test.ts');
         const long = ctx.getRootProject().createSpecification(files[1]);
         const results = [];
         for (const pattern of ${JSON.stringify(patterns)}) {
@@ -570,8 +571,11 @@ describe("the order a mutant's test files run in", () => {
     }
   }
 
-  it("runs first, inside the next run, the file that failed in the run before, then the quicker whole file, in runs narrowed as Stryker narrows them, where vitest 5's cache keeps an older failure", () => {
-    const runs = asStrykerRuns(['holds$', 'short holds$|long breaks$', 'holds$', 'short holds$|long quick$', 'holds$']);
+  // Each sweep's: the core sweep's suite takes the order and its record from
+  // the full sweep's, and each is resolved from its own file, as Stryker's
+  // runner resolves it.
+  it.each(['vitest.mutation.config.ts', 'vitest.core.config.ts'])("runs first, inside the next run, the file that failed in the run before, then the quicker whole file, in runs narrowed as Stryker narrows them, where vitest 5's cache keeps an older failure (%s)", (config) => {
+    const runs = asStrykerRuns(config, ['holds$', 'short holds$|long breaks$', 'holds$', 'short holds$|long quick$', 'holds$']);
     // The smaller first, as neither has a time; then the quicker; then the
     // one that failed in the run before; then, as it passed there, the
     // quicker again; and after a run of its one quick test, still `short`, by
@@ -661,14 +665,29 @@ describe('this repository', () => {
     expect(unit.reporters).toBeUndefined();
   });
 
-  it("has each sweep's run report through vitest's default reporter, and the full sweep's through the order's record beside it, alone on a runner, so that no mutant's run adds a summary to the step's", () => {
+  it("runs the core sweep's files in the full sweep's order, with its record, and nothing else of the full sweep's suite", async () => {
+    // The order and the record are the full sweep's, one class and one
+    // reporter: a sequencer of the core sweep's own would sort by a record
+    // its reporter never fills.
+    type Unit = { include: string[]; environment: string; testTimeout: number; sequence?: unknown; reporters?: unknown };
+    const suite = await mutationSuite();
+    const { sequence, reporters, ...unit } = (await load<{ test: Unit }>('vitest.core.config.ts')).test;
+    expect(sequence).toEqual({ sequencer: suite.QuickestFirst });
+    expect((sequence as { sequencer: unknown }).sequencer).toBe(suite.QuickestFirst);
+    expect(reporters).toEqual(['default', suite.lastRun]);
+    expect((reporters as unknown[])[1]).toBe(suite.lastRun);
+    // The unit suite alone, under a limit of its own.
+    expect(unit).toEqual({ include: ['tests/unit/**/*.test.ts'], environment: 'node', testTimeout: 30_000 });
+  });
+
+  it("has each sweep's run report through vitest's default reporter and the order's record alone on a runner, so that no mutant's run adds a summary to the step's", () => {
     // Where a suite names none, vitest adds its github-actions reporter on a
     // runner, and it appends a summary of every run to the step's own: the
     // core sweep's came to 1,093k on main's push of bd6a87c, where GitHub
     // uploads 1MiB a step, and its job ended on an error annotation that said
-    // so (vitest.core.config.ts).
-    expect(onARunner('vitest.core.config.ts')).toEqual(['default']);
-    // The record is the reporter given inline, as the test above has it.
+    // so (vitest.core.config.ts). The record is the reporter given inline, as
+    // the tests above have it.
+    expect(onARunner('vitest.core.config.ts')).toEqual(['default', 'inline']);
     expect(onARunner('vitest.mutation.config.ts')).toEqual(['default', 'inline']);
     // The suite `npm test` runs keeps the annotations and the summary vitest
     // gives a run on a runner.
