@@ -296,6 +296,8 @@ few minutes.
 to 95.
 
 *Amended 2026-10-07.* **Vitest stays on 4 until Stryker's runner reads 5.**
+(*Amended 2026-11-09*: the hold is lifted, by the steps below; the
+amendment of that date has what the two sweeps read.)
 The Decision's "Vitest 4.1" was the family's choice of a line that had
 aged; it is now a hold with a cause. On vitest 5,
 `@stryker-mutator/vitest-runner` 10.0.0, the newest there is, runs no test

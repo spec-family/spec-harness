@@ -98,10 +98,18 @@ the places a mutator applies under an `as`;
 `tests/mutation-unmeasured.test.ts` holds the sources to its count on every
 change, and the full sweep's score step holds the merged report to it ([ADR-0010](docs/adr/0010-toolchain-and-verification.md)).
 
-Vitest stays on 4 while Stryker's runner runs no test against a mutant on 5,
-where the core sweep read 3.83%: Dependabot proposes no major of it,
-`tests/source.test.ts` fails one made by hand, and ADR-0010 has the reason
-and where the steps that lift the hold are.
+Vitest is on 5 here since round 27, when Stryker 10.1's runner read its
+test names and both sweeps of the change read as main's;
+[ADR-0010](docs/adr/0010-toolchain-and-verification.md) has the
+measurement, and spec-core's
+[ADR-0008](https://github.com/spec-family/spec-core/blob/main/docs/adr/0008-toolchain.md)
+the steps. Vitest 5's cache keeps a failure from a run a test name pattern
+narrows until a run of the whole file passes, so the full sweep's order
+keeps its own record of the file that failed when the worker last ran it,
+`lastRun` in `vitest.mutation.config.ts`. The reporter has no `onInit`:
+vitest 5 calls that at the start of every run, which would empty the record
+before each sort, and `tests/mutation-shards.test.ts` fails with one put
+back.
 
 Run a tool through `npm run <script>` or `npx --no-install <tool>`, never a
 bare `npx <name>`: before `npm ci` that fetches whatever the registry has
