@@ -9,7 +9,7 @@ function refused(argv: readonly string[], isDirectory: (path: string) => boolean
   return refusal(parseOptions(argv), isDirectory);
 }
 
-/** What each command reads of a command line, as the README's table has it. */
+/** What each command reads of a command line, as the table in docs/reference/command-line.md has it. */
 const TAKES: Readonly<Record<string, readonly string[]>> = {
   context: ['brief', 'base', 'root', 'format'],
   guard: ['brief', 'base', 'root', 'format', 'strict'],

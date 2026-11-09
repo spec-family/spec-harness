@@ -305,10 +305,21 @@ describe('the names before the move', () => {
   it('are read where they would mislead: the documents, the skills, the plugin, the workflows and the sources', () => {
     // A directory that moved would leave the check below nothing to fail on.
     expect(files).toEqual(
-      expect.arrayContaining(['README.md', 'CONTRIBUTING.md', 'docs/adr/README.md', 'skills/run-round/SKILL.md', '.claude-plugin/plugin.json', '.github/workflows/release.yml', 'src/configure.ts']),
+      expect.arrayContaining([
+        'README.md',
+        'CONTRIBUTING.md',
+        'docs/adr/README.md',
+        'docs/reference/init.md',
+        'docs/reference/doctor.md',
+        'skills/run-round/SKILL.md',
+        '.claude-plugin/plugin.json',
+        '.github/workflows/release.yml',
+        'src/configure.ts',
+      ]),
     );
-    // And the names are there to be read, each beside what dates it.
-    expect(files.filter((path) => EARLIER_NAMES.test(text(path)))).toEqual(expect.arrayContaining(['README.md', 'CONTRIBUTING.md', 'src/configure.ts']));
+    // And the names are there to be read, each beside what dates it: in the
+    // reference, where `init` and `doctor` say what an earlier release wrote.
+    expect(files.filter((path) => EARLIER_NAMES.test(text(path)))).toEqual(expect.arrayContaining(['CONTRIBUTING.md', 'docs/reference/doctor.md', 'docs/reference/init.md', 'src/configure.ts']));
   });
 
   it('appear only beside what says they are of the past', () => {
@@ -327,39 +338,73 @@ describe('the names before the move', () => {
 });
 
 describe('the documents the package ships', () => {
-  it('link only to files it ships, or by absolute URL, so that a link works in node_modules and on npmjs.com', () => {
-    const files = json('package.json')['files'] as string[];
-    // `/README.md` is the root's README: npm reads a name with no slash at any
-    // depth, and `README.md` packed spec-core's vendored README beside it.
-    const ships = (path: string): boolean => files.some((entry) => path === entry.replace(/^\//, '') || path.startsWith(`${entry}/`));
-    const documents = ['README.md', 'CHANGELOG.md', ...[...walk('skills')].filter((path) => path.endsWith('.md'))];
+  const files = json('package.json')['files'] as string[];
+  // `/README.md` is the root's README: npm reads a name with no slash at any
+  // depth, and `README.md` packed spec-core's vendored README beside it.
+  const ships = (path: string): boolean => files.some((entry) => path === entry.replace(/^\//, '') || path.startsWith(`${entry}/`));
+  const reference = [...walk('docs/reference')].filter((path) => path.endsWith('.md')).sort();
+  const documents = ['README.md', 'CHANGELOG.md', ...reference, ...[...walk('skills')].filter((path) => path.endsWith('.md'))];
+
+  it('are the README, the changelog, the reference and the skills, and nothing of the vendored copy', () => {
     expect(documents.every(ships)).toBe(true);
     expect(files).toContain('/README.md');
+    expect(files).toContain('docs/reference');
     expect(ships('src/vendor/spec-core/README.md')).toBe(false);
+    // The records are linked by absolute URL, and stay out of the package.
+    expect(ships('docs/adr/0010-toolchain-and-verification.md')).toBe(false);
+    // A page that moved, or a directory renamed, would leave the links below unread.
+    expect(reference).toEqual(
+      ['README', 'audit', 'command-line', 'configuration', 'context', 'doctor', 'guard', 'init', 'install', 'mcp', 'premises', 'probe', 'rounds', 'rulings'].map((page) => `docs/reference/${page}.md`),
+    );
+  });
+
+  it('link only to files it ships, or by absolute URL, so that a link works in node_modules and on npmjs.com, and to headings that are there', () => {
+    // The anchors GitHub gives a document's headings, as npmjs.com does too.
+    const anchors = (path: string): string[] => scanMarkdown(text(path)).headings.map((heading) => heading.anchor);
     const dead: string[] = [];
+    let fragments = 0;
     for (const document of documents) {
       // Read as a renderer reads it: a link written out in a code span, as the
       // changelog does to show one, is text there and never followed.
       for (const { target } of scanMarkdown(text(document)).links) {
-        if (/^(?:[a-z][a-z+.-]*:|#)/i.test(target)) continue;
-        const path = posix.join(posix.dirname(document), target.split('#')[0] as string);
+        if (/^[a-z][a-z+.-]*:/i.test(target)) continue;
+        const [file, fragment] = target.split('#') as [string, string | undefined];
+        const path = file === '' ? document : posix.join(posix.dirname(document), file);
         if (!ships(path) || !existsSync(join(ROOT, path))) dead.push(`${document}: ${target}`);
+        else if (fragment !== undefined && path.endsWith('.md')) {
+          fragments += 1;
+          if (!anchors(path).includes(fragment)) dead.push(`${document}: ${target}`);
+        }
       }
     }
     expect(dead).toEqual([]);
+    // The reference's pages link into each other by heading; fewer would mean this no longer reads them.
+    expect(fragments).toBeGreaterThanOrEqual(15);
+  });
+
+  it("read a heading's anchor as GitHub gives it: a code span's text kept, its punctuation dropped, a second of a name numbered", () => {
+    const headings = scanMarkdown('# A\n\n## `guard <path...>` and the hooks\n\n## Names\n\n## Names\n').headings.map((heading) => heading.anchor);
+    expect(headings).toEqual(['a', 'guard-path-and-the-hooks', 'names', 'names-1']);
   });
 });
 
-describe('the README', () => {
-  it('states the minimum version of each sibling where it says what to install', () => {
-    const install = text('README.md').split('## A round')[0] as string;
-    for (const name of SIBLINGS) expect(install, name).toContain(`${name} ${MINIMUM_VERSIONS[name]}`);
+describe('the README and the reference', () => {
+  /** Where each says what to install: the README up to the round, and the reference's Requirements. */
+  const installing = (): Array<[string, string]> => [
+    ['README.md', text('README.md').split('## A round')[0] as string],
+    ['docs/reference/install.md', /^## Requirements$([\s\S]*?)^## /m.exec(text('docs/reference/install.md'))?.[1] ?? ''],
+  ];
+
+  it('state the minimum version of each sibling where they say what to install', () => {
+    for (const [document, install] of installing()) {
+      for (const name of SIBLINGS) expect(install, `${document}: ${name}`).toContain(`${name} ${MINIMUM_VERSIONS[name]}`);
+    }
   });
 
-  it('states the Claude Code release the hooks need where it says what to install, as the plugin does (ADR-0012)', () => {
+  it('state the Claude Code release the hooks need where they say what to install, as the plugin does (ADR-0012)', () => {
     // The first release whose changelog runs a hook's `args`, the exec form the guard is written in, and the one doctor checks.
     const claudeCode = `Claude Code ${CLAUDE_CODE_MINIMUM} or later`;
-    expect(text('README.md').split('## A round')[0]).toContain(claudeCode);
+    for (const [document, install] of installing()) expect(install, document).toContain(claudeCode);
     expect(json('.claude-plugin/plugin.json')['description']).toContain(claudeCode);
   });
 
@@ -374,9 +419,9 @@ describe('the README', () => {
     throw new Error('parseConfig accepted an unknown key');
   }
 
-  it('documents every configuration key parseConfig accepts', () => {
-    const readme = text('README.md');
-    const table = readme.slice(readme.indexOf('## Configuration'), readme.indexOf('**Exit codes:**'));
+  it('document every configuration key parseConfig accepts', () => {
+    const table = text('docs/reference/configuration.md');
+    expect(table).toContain('| Key | Default | What it says |');
     const top = keysAt((key) => ({ [key]: 1 })).filter((key) => key !== '$schema');
     expect(top).toContain('rulings');
     const documented: string[] = [];
@@ -403,9 +448,10 @@ describe('the README', () => {
     }
   }
 
-  it('gives each command, in its table, the options the command line lets it take and no other', () => {
-    const readme = text('README.md');
-    const section = readme.slice(readme.indexOf('### An input that names nothing'), readme.indexOf('## As a Claude Code plugin'));
+  it('give each command, in the table of the command line, the options the command line lets it take and no other', () => {
+    const page = text('docs/reference/command-line.md');
+    const section = page.slice(page.indexOf('## An input that names nothing'), page.indexOf('## Exit codes'));
+    expect(section).toContain('| Command | Reads |');
     const rows = [...section.matchAll(/^ {2}\| (`[^|]+) \| (`--[^|]+) \|$/gm)].map((match) => ({
       commands: [...(match[1] as string).matchAll(/`([a-z]+)`/g)].map((found) => found[1] as string),
       options: [...(match[2] as string).matchAll(/`--([a-z-]+)`/g)].map((found) => found[1] as string),
@@ -424,19 +470,21 @@ describe('the README', () => {
     }
   });
 
-  it('writes no command line the command line refuses, in the README or in a skill', () => {
+  it('write no command line the command line refuses, nor does a skill', () => {
     // A person copies these and an agent follows them to the letter: one the
     // harness refused would stop every round at that step.
-    const documents = ['README.md', ...[...walk('skills')].filter((path) => path.endsWith('.md'))];
+    const documents = ['README.md', ...[...walk('docs/reference')].filter((path) => path.endsWith('.md')), ...[...walk('skills')].filter((path) => path.endsWith('.md'))];
     const written = documents.flatMap((document) => {
       // A command with the lines that continue it, as a shell joins them.
       const joined = text(document).replace(/ \\\n\s*/g, ' ');
       const commands = [...joined.matchAll(/npx --no-install @spec-family\/spec-harness ([^`\n]+)/g), ...joined.matchAll(/`spec-harness ([^`\n]+)`/g), ...joined.matchAll(/spec-harness\.js ([^`\n]+)`/g)];
       return commands.map((match) => ({ document, line: (match[1] as string).trim() }));
     });
-    // Seventeen across the README and three of the skills; fewer would mean this no longer reads them.
-    expect(written.length).toBeGreaterThanOrEqual(15);
-    expect(new Set(written.map(({ document }) => document)).size).toBeGreaterThanOrEqual(4);
+    // Twenty-eight across the README, six pages of the reference and three of
+    // the skills; fewer would mean this no longer reads them.
+    expect(written.length).toBeGreaterThanOrEqual(25);
+    expect(new Set(written.map(({ document }) => document)).size).toBeGreaterThanOrEqual(10);
+    expect(written.filter(({ document }) => document === 'README.md').length).toBeGreaterThanOrEqual(8);
     for (const { document, line } of written) {
       // Its words as a shell reads them, up to a comment or a redirection.
       const words = [...line.matchAll(/"([^"]*)"|(\S+)/g)].map((match) => match[1] ?? (match[2] as string));

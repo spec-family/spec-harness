@@ -330,8 +330,8 @@ describe('a probe this repository shows, run where nothing is installed until it
   const skills = readdirSync(`${ROOT}skills`)
     .sort()
     .map((name) => `skills/${name}/SKILL.md`);
-  // Where a probe is shown: the README, the records, the skills an agent follows and the comments of the sources.
-  const documents = ['README.md', ...inDirectory('docs/adr', '.md'), ...skills, ...inDirectory('src', '.ts')];
+  // Where a probe is shown: the README, the reference, the records, the skills an agent follows and the comments of the sources.
+  const documents = ['README.md', ...inDirectory('docs/reference', '.md'), ...inDirectory('docs/adr', '.md'), ...skills, ...inDirectory('src', '.ts')];
   const lines = documents.flatMap((file) => probeLinesOf(read(file), file));
   const faultsIn = (block: string): Array<string | null> => probeLinesOf(block, 'x').flatMap(({ command }) => runsOf(command, 'x').map(faultOf));
 
@@ -357,11 +357,11 @@ describe('a probe this repository shows, run where nothing is installed until it
     expect(faultsIn(block)).toEqual(faults);
   });
 
-  it('is read where one is shown: the README, and the comment that opens src/probe.ts', () => {
+  it("is read where one is shown: the reference's page on probe, and the comment that opens src/probe.ts", () => {
     // A probe that moved, or a fence this file no longer reads, would leave
     // the check below nothing to fail on.
     const found = lines.map(({ where, key }) => `${where.split(':')[0]} ${key}`);
-    expect(found).toEqual(expect.arrayContaining(['README.md setup', 'README.md run', 'src/probe.ts run']));
+    expect(found).toEqual(expect.arrayContaining(['docs/reference/probe.md setup', 'docs/reference/probe.md run', 'src/probe.ts run']));
   });
 
   it('starts its tool through a script of the project, or says `--no-install`: it fetches nothing', () => {

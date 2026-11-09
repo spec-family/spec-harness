@@ -22,7 +22,7 @@ describe('the defaults', () => {
     expect(SIBLINGS).toEqual(['spec-brief', 'spec-graph', 'spec-guard']);
   });
 
-  it('are the ones the README documents', () => {
+  it('are the ones the reference documents (docs/reference/configuration.md)', () => {
     expect(DEFAULT_CONFIG.branches).toEqual(['brief/{id}', 'brief-{id}', '*/brief/{id}', '*/brief-{id}']);
     expect(DEFAULT_CONFIG.outOfScope).toBe('warn');
     expect(DEFAULT_CONFIG.base).toBeNull();
@@ -31,7 +31,7 @@ describe('the defaults', () => {
     expect(DEFAULT_CONFIG.assertions.premises).toEqual(['The Defect, Measured', 'Premises', 'Preconditions']);
     expect(DEFAULT_CONFIG.probes).toEqual({ runs: 2, timeout: 600 });
     expect(DEFAULT_CONFIG.tools).toEqual({ 'spec-brief': null, 'spec-graph': null, 'spec-guard': null });
-    // requirements-dev.txt is a requirements file too; the README says requirements*.txt.
+    // requirements-dev.txt is a requirements file too; the reference's page on audit says requirements*.txt.
     expect(DEFAULT_MANIFESTS).toEqual([
       'package.json',
       'Cargo.toml',
