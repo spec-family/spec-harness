@@ -9,7 +9,13 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
-## Unreleased
+## 0.24.1
+
+The README is a front page, and the reference ships in the package, in
+`docs/reference/`, so the copy a project installs describes the release it
+runs; the page on `doctor` says a CI job needs the whole history and no
+fetch of `main:main`. Nothing the tool prints, exits with or answers
+changes.
 
 ### Documentation
 
