@@ -74,7 +74,7 @@
   },
   "devDependencies": {
     "@spec-family/spec-brief": "^0.12.0",
-    "@spec-family/spec-guard": "^0.30.0",
+    "@spec-family/spec-guard": "^0.33.0",
     "@stryker-mutator/core": "^10.0.0",
     "@stryker-mutator/vitest-runner": "^10.0.0",
     "@types/node": "^22.20.4",
