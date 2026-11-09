@@ -25,6 +25,13 @@ cannot turn a run red. The family's policy is
   it relatively. The README keeps the headings other documents link to,
   each over a summary that links to its page. Nothing the tool prints,
   exits with or answers changes.
+- **What a CI job that runs `doctor` needs.** The page on `doctor` said to
+  fetch the base under its configured name, `git fetch origin main:main`,
+  which 0.24.0 made unneeded: the configured base is read as
+  `remotes/origin/main` where the checkout has no `main`. It now says that
+  a checkout with the whole history is all a round's last pull request
+  needs, `actions/checkout` with `fetch-depth: 0` on GitHub Actions, and
+  that a shallow one still fails it.
 
 ## 0.24.0
 
