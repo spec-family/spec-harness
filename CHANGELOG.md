@@ -9,7 +9,14 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
-## Unreleased
+## 0.25.0
+
+`audit --if-round` passes a run where no brief is named, or where the
+branch archived its brief and waits to merge, so a CI job can run the
+audit on every branch; `doctor` knows Azure Pipelines and Jenkins as CI
+runners. The copy of spec-core is at 92e46d4, and the package's homepage
+on npm is the family's site, https://spec-family.github.io. Without the
+flag, nothing the tool prints, exits with or answers changes.
 
 ### Added
 

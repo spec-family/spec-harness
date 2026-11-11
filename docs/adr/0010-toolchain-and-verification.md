@@ -259,6 +259,14 @@ having run no test. The core sweep of b32c85b (run 42970848876) read 98.69%
 over 7,305, as it did on vitest 4. 0.24.1 changed documents alone, and no
 sweep ran for it.
 
+For 0.25.0, which adds `audit --if-round`, knows Azure Pipelines and
+Jenkins as runners and copies spec-core at 92e46d4, the sweep of ac40ca6
+(run 43076735805) read 98.01% over 12,686 mutants, 97.41% with every
+timeout lost, in shards of 10m15s to 44m42s against their 60, and the
+`break` stays 95. Its 252 undetected mutants are 0.24.2's, mutant for
+mutant, and none survived having run no test. The core sweep of ac40ca6
+(run 43076735879) read 98.69% over 7,334, its 96 undetected 0.24.2's.
+
 One runner took 69 to 130 minutes for the full sweep. Before any sharded
 sweep ran, the report of eb39599 was cut into shards the way Stryker writes
 them and put back by the merge: all 7,507 verdicts came back with their

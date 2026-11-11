@@ -1,6 +1,6 @@
 {
   "name": "@spec-family/spec-harness",
-  "version": "0.24.2",
+  "version": "0.25.0",
   "mcpName": "io.github.spec-family/spec-harness",
   "description": "The agent-facing member of the spec-* tools: context for a round, a guard on the agent's writes, an audit when it ends, probes that prove a defect before it is filed, and rulings a person signs.",
   "keywords": [
@@ -91,7 +91,7 @@
   "bugs": {
     "url": "https://github.com/spec-family/spec-harness/issues"
   },
-  "homepage": "https://github.com/spec-family/spec-harness#readme",
+  "homepage": "https://spec-family.github.io",
   "overrides": {
     "qs": "^6.17.1"
   }

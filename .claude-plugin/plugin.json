@@ -1,6 +1,6 @@
 {
   "name": "spec-harness",
-  "version": "0.24.2",
+  "version": "0.25.0",
   "description": "Rounds of agent work under a brief: context, a guard on the agent's writes, escalations a person signs, an audit at the end. Needs Claude Code 2.1.139 or later, and @spec-family/spec-harness and @spec-family/spec-brief 0.12.0 or later installed in the project.",
   "author": {
     "name": "spec-family",
