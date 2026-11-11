@@ -666,6 +666,19 @@ describe('the mcp command', () => {
     expect(called?.result.structuredContent?.decisions.map((d) => d.verdict)).toEqual(['deny']);
   });
 
+  it("starts as the MCP Registry lists it: server.json's arguments, in the directory a client that names no project starts it in, at the version server.json names", async () => {
+    const listing = JSON.parse(readFileSync(join(ROOT, 'server.json'), 'utf8')) as { version: string; packages: Array<{ packageArguments: Array<{ value: string }> }> };
+    const served = await cli(
+      listing.packages[0]!.packageArguments.map((argument) => argument.value),
+      repo.root,
+      { stdin: session },
+    );
+    expect(served).toMatchObject({ code: 0, stderr: '' });
+    const [initialized, called] = answers(served.stdout);
+    expect(initialized?.result.serverInfo).toEqual({ name: 'spec-harness', version: listing.version });
+    expect(called?.result.structuredContent?.decisions.map((d) => d.verdict)).toEqual(['deny']);
+  });
+
   it('starts where the configuration does not load, lists its tools, and has each say why it cannot answer (ADR-0008, amended 2026-11-08)', async () => {
     const broken = repository({ [BRIEF_FILE]: brief() });
     broken.write('.spec-harness.json', '{ "outOfScope": "sideways" }\n');

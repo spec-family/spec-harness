@@ -104,9 +104,11 @@ second factor, never published from a workstation
 
 1. On a branch, set the version and give it notes:
    `npm version <x.y.z> --no-git-tag-version`, set the same version in
-   `.claude-plugin/plugin.json`, then move the changelog's `## Unreleased`
+   `.claude-plugin/plugin.json` and twice in `server.json` (`version`, and
+   the package's `version`), then move the changelog's `## Unreleased`
    entries under `## <x.y.z>`. The test suite fails until the changelog has
-   a section for the version and the manifest carries it. The plugin's entry
+   a section for the version and the manifest and `server.json` carry it.
+   The plugin's entry
    in `.claude-plugin/marketplace.json` names no version: Claude Code reads
    the manifest's first, and `claude plugin validate` warns where both do.
 2. Merge to main.
@@ -129,6 +131,23 @@ exact version in its `npm_version` input, as in
 `gh workflow run release.yml --ref main -f npm_version=12.2.0`. A tag stages
 with the pin whatever was rehearsed, and ADR-0011 says what a rehearsal does
 and does not show.
+
+4. Once npm serves the version, list it in the official MCP Registry:
+
+   ```bash
+   gh workflow run mcp-registry.yml --ref main -f version=<x.y.z>
+   ```
+
+   or Actions, MCP Registry, Run workflow, with the version.
+   [`mcp-registry.yml`](.github/workflows/mcp-registry.yml) lists the server
+   as `io.github.spec-family/spec-harness`. The registry reads the package
+   from npm, so the listing waits for the approval, which GitHub never hears
+   of. The workflow checks out the version's tag; stops unless `server.json`,
+   `package.json` and npm all name the version, and npm serves it with
+   `server.json`'s name as its `mcpName`; downloads `mcp-publisher` at one
+   version and checks its SHA-256; logs in with the run's GitHub OIDC token,
+   which needs no secret; and publishes `server.json`. A run before the
+   approval stops at npm, and says so.
 
 ### Once, before the first release under a name
 

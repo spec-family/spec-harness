@@ -1,12 +1,13 @@
 /**
- * Checks a release tag against the package, the changelog and the plugin's
- * manifests, before anything is built, and hands the release workflow what it
- * needs: the version, the npm dist-tag and the notes.
+ * Checks a release tag against the package, the changelog, the plugin's
+ * manifests and server.json, before anything is built, and hands the release
+ * workflow what it needs: the version, the npm dist-tag and the notes.
  *
  *   node scripts/release.ts v0.1.0 [notes-file]
  *
  * Exits 1 when the tag does not name the package's version, the changelog does
- * not describe it or the plugin names another, and 2 on bad arguments. Inside
+ * not describe it, or the plugin or server.json names another, and 2 on bad
+ * arguments. Inside
  * GitHub Actions the outputs go to $GITHUB_OUTPUT; elsewhere they are printed.
  */
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
@@ -83,6 +84,28 @@ export function pluginDrift(version: string, plugin: unknown, marketplace: unkno
   return wrong.length === 0 ? null : wrong.join('; ');
 }
 
+export const SERVER_MANIFEST = 'server.json';
+
+/**
+ * Where server.json names a version other than the package's, for the server
+ * or for its package, or `null` where it names the package's for both. The
+ * MCP Registry lists the server from the tag's server.json once npm serves
+ * the version (`mcp-registry.yml`), and reads the package from npm at the
+ * version the file names: a file a version behind would list the release
+ * before this one under this one's tag.
+ */
+export function serverDrift(version: string, server: unknown): string | null {
+  const packages = field(server, 'packages');
+  const named = [
+    { where: 'version', value: field(server, 'version') },
+    { where: 'packages[0].version', value: Array.isArray(packages) ? field((packages as unknown[])[0], 'version') : undefined },
+  ];
+  const wrong = named
+    .filter(({ value }) => value !== version)
+    .map(({ where, value }) => `${SERVER_MANIFEST} names ${typeof value === 'string' ? value : 'no version'} as ${where}, where package.json names ${version}: the MCP Registry lists the package at the version server.json names`);
+  return wrong.length === 0 ? null : wrong.join('; ');
+}
+
 function field(value: unknown, key: string): unknown {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>)[key] : undefined;
 }
@@ -103,6 +126,11 @@ function main(argv: readonly string[]): number {
   const drift = pluginDrift(release.version, read(PLUGIN_MANIFEST), read(MARKETPLACE_MANIFEST));
   if (drift !== null) {
     console.error(drift);
+    return 1;
+  }
+  const listed = serverDrift(release.version, read(SERVER_MANIFEST));
+  if (listed !== null) {
+    console.error(listed);
     return 1;
   }
   if (notesFile !== undefined) writeFileSync(notesFile, `${release.notes}\n`);

@@ -252,6 +252,75 @@ package's version and the entry to having none: a version on it fails
 version Claude Code installs and names its cache directory by is the one it
 was, the manifest's.
 
+*Amended 2026-11-11.* A release is listed in the official MCP Registry once
+npm serves it, so that a client that reads the registry finds
+`spec-harness mcp` there, as spec-guard's server is from its 0.33.2. The
+registry keeps metadata and no package: it lists a `server.json`, and reads
+the package from npm at the version that file names, accepting it only where
+the package's `package.json` names the server as its `mcpName`. So
+`package.json` carries `"mcpName": "io.github.spec-family/spec-harness"`, in
+the namespace GitHub's sign-in grants the organization, and `server.json`,
+at the root and outside the package, names the server, a description in the
+registry's hundred characters, the repository with its id on GitHub, and the
+package on npm at the version, run with `mcp` over stdio. That is the
+command `.mcp.json` runs, without the `--root ${CLAUDE_PROJECT_DIR}` only
+Claude Code can fill: started with `mcp` alone, the server answers for the
+project `CLAUDE_PROJECT_DIR` names or else the directory the client starts
+it in, and an optional argument a client left empty would be refused.
+
+`server.json` names the version twice, for the server and for its package,
+and the release commit moves both with `package.json`'s and the plugin
+manifest's. `scripts/release.ts` holds both to the tag's version in `pack`,
+as it holds the manifest, and `tests/mcp-registry.test.ts` holds them to
+`package.json`'s on every change, with the server's name to `mcpName` and
+its package to this one.
+
+The listing cannot be a job of `release.yml`. The registry refuses a version
+npm does not serve, and a staged version is served to nobody until the
+maintainer approves it on npmjs.com, which GitHub never hears of. So
+`.github/workflows/mcp-registry.yml` is dispatched by hand, from main, with
+the version, once the approval is done:
+
+```bash
+gh workflow run mcp-registry.yml --ref main -f version=<x.y.z>
+```
+
+It runs one job. It refuses a run from another ref and a version that is
+not three numbers, checks out the version's tag, and stops unless
+`server.json`'s two versions and `package.json`'s name it, `server.json`
+lists this package on npm alone, `package.json`'s `mcpName` is
+`server.json`'s name, and npm serves the version with that `mcpName`: the
+request the registry makes, made first, so that a run before the approval
+says so. Then it downloads `mcp-publisher` v1.8.7 from the registry's GitHub
+release and checks the archive against the SHA-256 written in the workflow
+before opening it, the one the release's checksums file and GitHub's digest
+of the asset both gave on 2026-11-11. That version was the newest that had
+been out a week then, the cooldown Dependabot holds a patch to, and moving
+it is an edit of the version and the hash together, since Dependabot cannot
+see them. The registry's own example verifies the archive's Sigstore bundle
+with cosign instead; a hash written here names the bytes, and needs no
+other action in the job that holds the token. `mcp-publisher login
+github-oidc` trades the token GitHub mints for the run, the job's
+`id-token: write`, for a registry token, so there is no secret to keep, and
+`mcp-publisher publish` lists `server.json`. The workflow is spec-guard's,
+line for line but for this record's number and the example version.
+
+The registry grants a GitHub OIDC token `io.github.<repository_owner>/*`,
+as its handler reads (`internal/api/handlers/v0/auth/github_oidc.go`, the
+same at v1.8.7 and on its main branch on 2026-11-11), and its
+authentication page names GitHub Actions' OIDC as one of the two ways to
+publish under an organization's namespace, where the device flow cannot.
+Nothing in that grant reads the repository, the workflow or the ref, so a
+run of any workflow in any of the organization's repositories may publish
+under `io.github.spec-family/*`: who can list a server there is who can push
+a workflow to one of them. A token minted for this workflow cannot stage a
+package, since npm's trusted publisher takes `release.yml` in the `npm`
+environment alone. The listing of 0.24.2 is the first time the registry is
+asked for this server; were it to refuse the namespace, the other way it
+documents is a personal access token of an organization owner that may read
+the organization's members, kept as a secret of a protected environment,
+and that is the maintainer's decision.
+
 ## Consequences
 
 - A maintainer sets up npmjs.com once: publish the placeholder; in the
@@ -268,7 +337,12 @@ was, the manifest's.
   reviewer goes, if a release should wait for one.
 - The changelog and plugin-manifest checks also run in the test suite, so the
   pull request that bumps the version fails without its notes, before anyone
-  tags it.
+  tags it. So does the check of `server.json` (amended 2026-11-11).
+- **A maintainer lists each release in the official MCP Registry** once npm
+  serves it, by dispatching `mcp-registry.yml` from main with the version
+  (amended 2026-11-11). A version whose listing was not dispatched is on npm
+  and not in the registry, and the versions before 0.24.2 are not listed:
+  their `package.json` has no `mcpName`.
 - 0.0.0 has no code and no provenance, and is deprecated. 0.1.0 has code and
   no provenance, and is deprecated. Every later version has provenance.
 - Raising a minimum changes `MINIMUM_VERSIONS` and `peerDependencies`

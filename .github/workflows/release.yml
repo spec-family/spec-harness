@@ -72,7 +72,7 @@ jobs:
             exit 1
           }
 
-      - name: Check the tag against the version, the changelog and the plugin
+      - name: Check the tag against the version, the changelog, the plugin and server.json
         id: release
         run: |
           tag="$GITHUB_REF_NAME"

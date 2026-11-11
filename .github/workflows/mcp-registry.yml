@@ -1,0 +1,157 @@
+name: MCP Registry
+
+# Lists a released version in the official MCP Registry, by hand, once npm
+# serves it.
+#
+# A release is staged by release.yml and published when the maintainer
+# approves the stage on npmjs.com with a second factor (ADR-0011). GitHub
+# never hears of the approval, so nothing here can start on it: the
+# maintainer dispatches this from main afterwards, naming the version. The
+# registry keeps metadata alone. It reads the package from npm at the
+# version server.json names, and refuses one npm does not serve or whose
+# package.json carries another mcpName, so a run before the approval would be
+# refused there; the gate below refuses it first, and says which it is.
+#
+# One job, and it holds `id-token: write`: `mcp-publisher login github-oidc`
+# trades the token GitHub mints for this run for a registry token that may
+# publish under io.github.<the repository's owner>/*, so no secret is kept
+# for it. npm's trusted publisher takes a token minted for release.yml in the
+# `npm` environment and no other, so this one cannot stage a package. What
+# runs beside it is this file's bash, the runner's curl and jq, and
+# mcp-publisher at one version whose SHA-256 is written below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'One exact version npm serves (approved, not only staged), such as 0.24.2'
+        type: string
+        required: true
+
+# Never two listings at once, and never one cancelled halfway.
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: list in the MCP Registry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # mcp-publisher login github-oidc
+
+    steps:
+      # The version is text nobody vouched for. It reaches the script through
+      # the environment, and nothing is checked out or fetched for it unless
+      # it is one exact version, so it names a tag and nothing else. A run
+      # dispatched from a branch would run that branch's copy of this file
+      # with the token, so main's is the one that runs.
+      - name: The version to list, from main
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::a listing is dispatched from main, and this run is from $GITHUB_REF; nothing was listed"
+            exit 1
+          fi
+          # Each digit by name: a range is read by the runner's locale.
+          part='(0|[123456789][0123456789]*)'
+          exact="^$part\\.$part\\.$part\$"
+          if ! [[ "$VERSION" =~ $exact ]]; then
+            echo "::error::version must be one exact version, such as 0.24.2; nothing was listed"
+            exit 1
+          fi
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      # The release's own server.json and package.json, from its tag: main's
+      # may name the next version already.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.version.outputs.tag }}
+          persist-credentials: false
+          sparse-checkout: |
+            server.json
+            package.json
+          sparse-checkout-cone-mode: false
+
+      # The registry asks npm for the package at the version server.json
+      # names, and lists it only where that package.json carries server.json's
+      # name as its mcpName. The same request, made first, says which is
+      # wrong: the files at the tag, or npm, where a staged version is
+      # installable by nobody until it is approved.
+      - name: server.json, package.json and npm must name this version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          fail() {
+            echo "::error::$1; nothing was listed"
+            exit 1
+          }
+          name="$(jq -r .name server.json)"
+          package="$(jq -r .name package.json)"
+          for field in .version '.packages[0].version'; do
+            found="$(jq -r "$field" server.json)"
+            [ "$found" = "$VERSION" ] || fail "server.json names $found in $field at v$VERSION"
+          done
+          found="$(jq -r .version package.json)"
+          [ "$found" = "$VERSION" ] || fail "package.json names $found at v$VERSION"
+          found="$(jq -r '[.packages[] | .registryType + " " + .identifier] | join(", ")' server.json)"
+          [ "$found" = "npm $package" ] || fail "server.json lists $found, where it lists npm $package alone"
+          found="$(jq -r '.mcpName // "no mcpName"' package.json)"
+          [ "$found" = "$name" ] || fail "package.json names $found, where server.json is $name"
+          url="https://registry.npmjs.org/${package/\//%2F}/$VERSION"
+          status="$(curl --silent --show-error --output npm.json --write-out '%{http_code}' "$url")"
+          case "$status" in
+            200) ;;
+            404) fail "npm does not serve $package@$VERSION: a staged version waits for its approval (npm stage list $package)" ;;
+            *) fail "npm answered $url with HTTP $status" ;;
+          esac
+          found="$(jq -r '.mcpName // "no mcpName"' npm.json)"
+          [ "$found" = "$name" ] || fail "npm serves $package@$VERSION with $found, where server.json is $name"
+          rm npm.json
+          echo "$name $VERSION: server.json, package.json and npm agree."
+
+      # One version, and the bytes of it: the archive's SHA-256, as the
+      # release's checksums file and GitHub's digest of the asset both gave it
+      # on 2026-11-11. A moved tag or a replaced asset stops here, before it
+      # runs. The version is the newest that had been out a week then, the
+      # cooldown Dependabot holds a patch to, and Dependabot cannot see this
+      # line: moving it is an edit of both, made on purpose.
+      - name: mcp-publisher, at one version
+        run: |
+          version=v1.8.7
+          sha256=00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579
+          archive="$RUNNER_TEMP/mcp-publisher_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error --output "$archive" \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$version/mcp-publisher_linux_amd64.tar.gz"
+          echo "$sha256  $archive" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/mcp-publisher"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/mcp-publisher" mcp-publisher
+          echo "$RUNNER_TEMP/mcp-publisher" >> "$GITHUB_PATH"
+
+      - name: Log in as the repository's owner, with this run's token
+        run: mcp-publisher login github-oidc
+
+      - name: List the version
+        run: mcp-publisher publish
+
+      - name: What has happened
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          name="$(jq -r .name server.json)"
+          {
+            echo '### Listed'
+            echo
+            echo "$name $VERSION is in the official MCP Registry:"
+            echo
+            echo '```'
+            echo "curl 'https://registry.modelcontextprotocol.io/v0.1/servers?search=$name'"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
