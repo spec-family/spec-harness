@@ -1275,19 +1275,33 @@ export type PluginPresence =
   | { readonly state: 'unknown'; readonly detail: string }
   | { readonly state: 'unchecked'; readonly detail: string };
 
+/** A value that says no, as `CI=false` does. */
+const NO: readonly string[] = ['false', '0'];
+
 /**
- * Whether doctor runs on a CI runner: `CI` set to anything but `false` or
- * `0`, which GitHub Actions and GitLab CI set to `true` on every job. No
- * Claude Code session runs on one, so the plugin settings turn on is
- * neither looked for nor required there (ADR-0012, amended 2026-11-08).
+ * Whether doctor runs on a CI runner, by the variable that says so, or
+ * `null` where none does: `CI` set to anything but `false` or `0`, which
+ * GitHub Actions and GitLab CI set to `true` on every job; or, where `CI` is
+ * not set, `TF_BUILD` set to anything but `false` or `0`, which Azure
+ * Pipelines sets to `True`, or `JENKINS_URL` set to anything, which Jenkins
+ * sets to its own address, neither of which sets `CI`. `CI` set to `false`
+ * or `0` says no runner, whatever else is set. No Claude Code session runs
+ * on one, so the plugin settings turn on is neither looked for nor required
+ * there (ADR-0012, amended 2026-11-08 and 2026-11-11).
  */
-export function onCiRunner(env: Readonly<Record<string, string | undefined>>): boolean {
-  const value = (env['CI'] ?? '').trim().toLowerCase();
-  return !['', 'false', '0'].includes(value);
+export function onCiRunner(env: Readonly<Record<string, string | undefined>>): 'CI' | 'TF_BUILD' | 'JENKINS_URL' | null {
+  const value = (name: string): string => (env[name] ?? '').trim().toLowerCase();
+  const ci = value('CI');
+  if (ci !== '') return NO.includes(ci) ? null : 'CI';
+  const build = value('TF_BUILD');
+  if (build !== '' && !NO.includes(build)) return 'TF_BUILD';
+  return value('JENKINS_URL') === '' ? null : 'JENKINS_URL';
 }
 
-/** What doctor says of the plugin on a CI runner. */
-const ON_A_RUNNER = 'CI is set, so this is a CI runner, where no Claude Code session runs: the plugin is not looked for here, and neither is the package its hooks run';
+/** What doctor says of the plugin on a CI runner, by the variable that says it is one. */
+function onARunner(variable: string): string {
+  return `${variable} is set, so this is a CI runner, where no Claude Code session runs: the plugin is not looked for here, and neither is the package its hooks run`;
+}
 
 function turnsOn(settings: unknown, id: string): boolean {
   const plugins = field(settings, 'enabledPlugins');
@@ -1322,12 +1336,13 @@ function holds(record: unknown, name: string): boolean {
  * declared, whose own list is not read here, and a `true` in a settings
  * file of the person's own, for which Claude Code fetches.
  *
- * But on a CI runner, `runner`, a cache that holds no version of it is
- * `unchecked`: the runner has no record of marketplaces, which reads as
- * `unknown`, and runs no session the plugin could guard.
+ * But on a CI runner, which `runner` names the variable of, a cache that
+ * holds no version of it is `unchecked`: the runner has no record of
+ * marketplaces, which reads as `unknown`, and runs no session the plugin
+ * could guard.
  */
-export function pluginPresence(plugin: EnabledPlugin, sources: readonly ClaudeSettings[], roots: readonly PluginsRoot[], runner = false): PluginPresence {
-  if (runner && !roots.some((root) => root.cached)) return { state: 'unchecked', detail: ON_A_RUNNER };
+export function pluginPresence(plugin: EnabledPlugin, sources: readonly ClaudeSettings[], roots: readonly PluginsRoot[], runner: string | null = null): PluginPresence {
+  if (runner !== null && !roots.some((root) => root.cached)) return { state: 'unchecked', detail: onARunner(runner) };
   const untold = (detail: string): PluginPresence => ({ state: 'unknown', detail });
   const marketplace = pluginMarketplace(plugin.id);
   if (marketplace === null) return untold(`${plugin.id} names no marketplace whose plugins are kept in a cache: a plugin from --plugin-dir, a skills directory or a claude.ai account comes another way`);
