@@ -1,4 +1,12 @@
 export { linesOf, scanMarkdown } from './scan.js';
+export { findClaims } from './claims.js';
+export type { Claim } from './claims.js';
+export { findCommitReferences } from './commits.js';
+export type { CommitReference } from './commits.js';
+export { bindToItems, findItemIds } from './annotations.js';
+export type { Annotation } from './annotations.js';
+export { findRegisterRows, flatCell } from './registers.js';
+export type { RegisterRow } from './registers.js';
 export { sectionsOf, slugify, titleOf } from './headings.js';
 export {
   findEntry,

@@ -60,30 +60,30 @@ export function lineStarts(text: string): number[] {
 export function createLineIndex(text: string): LineIndex {
   const starts = lineStarts(text);
   const lineCount = starts.length;
-  // Each clamp, here and in `positionAt`, answers the bound itself at the
-  // bound, so `<=` and `>=` for `<` and `>` give the same answers.
-  const clamp = (line: number): number => (line < 1 ? 1 : line > lineCount ? lineCount : line);
+  // Each clamp, here and in `positionAt`, is a `max` and then a `min`, where
+  // a comparison would answer the bound itself either way at the bound.
+  const clamp = (line: number): number => Math.min(Math.max(line, 1), lineCount);
   const startOf = (line: number): number => starts[clamp(line) - 1]!;
   const endOf = (line: number): number => {
     const index = clamp(line);
     const start = starts[index - 1]!;
     let end = index === lineCount ? text.length : (starts[index] as number);
-    // At most two terminator characters, and never past the line's own start.
-    // With the table `lineStarts` builds, `end > start` never decides: a line
-    // holds no character, terminator included, only in the empty text, and
-    // one that holds only `\n` follows a `\n`, since a `\r` before it would
-    // have made one `\r\n` with it. The guards keep the promise without
-    // leaning on that.
-    if (end > start && text.charCodeAt(end - 1) === LF) end -= 1;
-    if (end > start && text.charCodeAt(end - 1) === CR) end -= 1;
-    return end;
+    // At most two terminator characters. With the table `lineStarts` builds
+    // neither step reaches past the line's own start: a line holds no
+    // character, terminator included, only in the empty text, and one that
+    // holds only `\n` follows a `\n`, since a `\r` before it would have made
+    // one `\r\n` with it. The `max` keeps the promise without leaning on
+    // that, and a test before each step would never decide.
+    if (text.charCodeAt(end - 1) === LF) end -= 1;
+    if (text.charCodeAt(end - 1) === CR) end -= 1;
+    return Math.max(start, end);
   };
   return {
     lineCount,
     lineStart: startOf,
     lineEnd: endOf,
     lineText: (line) => text.slice(startOf(line), endOf(line)),
-    positionAt: (offset) => locate(starts, offset < 0 ? 0 : offset > text.length ? text.length : offset),
+    positionAt: (offset) => locate(starts, Math.min(Math.max(offset, 0), text.length)),
   };
 }
 

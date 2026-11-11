@@ -11,6 +11,19 @@ cannot turn a run red. The family's policy is
 
 ## Unreleased
 
+### Changed
+
+- **spec-core's copy is at 92e46d4**, copied again by spec-core's
+  `scripts/vendor.mjs`. `markdown/links.ts`, `markdown/scan.ts` and
+  `text/lines.ts` are written again without the mutants a sweep told apart
+  only by its clock (spec-core #63): loops that end where a `Math.min`
+  reaches their bound, the list items a line ends closed in one step, and
+  line bounds clamped by `Math.max` and `Math.min`. `markdown/index.ts`
+  exports what the module gained since, `annotations.ts`, `claims.ts`,
+  `commits.ts` and `registers.ts`, which come with the module and which the
+  harness does not import. Nothing the harness checks, prints or exits with
+  changes. Upgrading: nothing to do.
+
 ### Fixed
 
 - **`doctor` knows Azure Pipelines and Jenkins as CI runners.** It read
