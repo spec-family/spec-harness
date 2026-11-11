@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/spec-family/spec-core",
-  "commit": "1104df782e29fb8969d3d4717c4a507b8027495f",
+  "commit": "92e46d47d02418e0622946b61ce6ae61cc67cd43",
   "modules": {
     "jsonrpc": {
       "files": {
@@ -10,13 +10,17 @@
     },
     "markdown": {
       "files": {
+        "annotations.ts": "sha256-9fec80ccea1a19241a3dcd505d84a6332dd089dfbd094008eb3f2b266e8a3069",
+        "claims.ts": "sha256-01940c7983340ac21cb7fbe8e858bc2a4236f0855126501f0e84618a1a56dd7a",
+        "commits.ts": "sha256-83150e29b6e9025a98f14ead9c6390d8776ac416f81494dbb2753b231f8a8a1c",
         "frontmatter.ts": "sha256-e4cdf9b5ef5886b6b4b439790c4fbc4fbbd0f2dd90ee1971ab794bbdebd5af8d",
         "headings.ts": "sha256-70c68c677556f44354204b9c00fd5a465d9051f348b41ed70c0187456bab0eb1",
-        "index.ts": "sha256-6b6bbd394d85c1830be81f08492cd96f9b9ad0a92df440267db7c4040fd1c37b",
+        "index.ts": "sha256-e2e832f84d4866eef955b80960bb05f9bd1a5841231245e9d13efba0b8798d4f",
         "layout.ts": "sha256-11293f9961ce7fcc672743e72945dcaa0a1475a8adea166ea10fa9c542cd6f75",
-        "links.ts": "sha256-d85b0cfedd2ab1f0db019681528f09faf8b1a57af4bda7faa0c04498aa8d3282",
+        "links.ts": "sha256-b940c3907f031f7b5929b00d8e91233c25191702ea1b9832b60b6a355e76f4d1",
         "lists.ts": "sha256-ac2fa8e5c35ca0b17b2727f4a3d9b52edb56ebb7392955d79aa029bc3ae11ea6",
-        "scan.ts": "sha256-21bb2ce3467124a92abb0e6f3cc28f27dad987e12cbe2b9e22145270b00737b3",
+        "registers.ts": "sha256-46025a741f6f282e0699ddd0eacb88928a35d0fc0444e00b726d5b43fb786f0f",
+        "scan.ts": "sha256-458205f1dbfdad1b66db374a39dc9f2fc1ea1d27e70e5a5c8e0e5d38fbdd2dc5",
         "syntax.ts": "sha256-9331a2594dfec7a2bab7194fa88ffb35c2f1c0f45676f2c442b7854594c73cc9",
         "tables.ts": "sha256-7981389b636987c95f9b610e9553bf3e1a931418fa2154bd591fd93c57e0b145",
         "types.ts": "sha256-c42a4c40b2ea1808a084204d63297528d8e62bfc04240889fbd1cf52c568b660"
@@ -40,7 +44,7 @@
     "text": {
       "files": {
         "index.ts": "sha256-5fbee20f724e7ef28ec517dad7481d31780262430f4506a9adcaf860a8bfa71f",
-        "lines.ts": "sha256-95d4decc97351ac74c6aa621d57c2eb6b4dbc8fd926013d8eaad878546c6a115",
+        "lines.ts": "sha256-5e1e39e8c29fc36e6e52dda4132fcaf4e07e0d32044778ecb1630aa1d20d1825",
         "width.ts": "sha256-61f7f9b5a2bdc9ea02e15ec30d4fa3ee27cc9bbac1eb4a95337ff98afa579c5a"
       }
     }
