@@ -24,7 +24,7 @@ import type { ClaudeCodeWiring } from './configure.js';
 import { dirname, join, resolve } from 'node:path';
 
 import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
-import { changedPaths, GitError, holdsPath, isShallow, show, stagedChanges, withBudget } from './git.js';
+import { changedPaths, GitError, show, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
 import { afterResponse, callFile, callRecord, claudeResponse, gitResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
@@ -117,6 +117,8 @@ Options:
   --format <fmt>      pretty or json; audit and premises also gitlab, sarif or github.
                       For every command but hook and mcp.
   --strict            Warnings fail the run. For guard, audit, premises and doctor.
+  --if-round          Where nothing names a brief, say there is no round and exit 0,
+                      not 2. For audit.
   --block-on-failure  onFailure "block" on init's entries but the one as a turn ends. For init.
   --help, --version   One of the two: both on one line are refused.
 
@@ -605,49 +607,6 @@ async function baseAndSigners(
 }
 
 /**
- * What a branch that names a brief spec-brief has archived is, as git tells
- * it: the branch that archived the brief, whose round waits to merge, where
- * the brief's archived file is in HEAD and not at the merge base of the base
- * and HEAD; a branch whose brief was archived before it, where the file is
- * at the merge base already; and cannot tell wherever git does not say,
- * which fails doctor as such a branch did (ADR-0004).
- */
-type ClosedRound =
-  | { readonly state: 'waiting-to-merge' | 'archived-before'; readonly brief: BriefRow; readonly ref: string; readonly mergeBase: string }
-  | { readonly state: 'unknown'; readonly brief: BriefRow; readonly reason: string };
-
-async function closedRound(workspace: Workspace, base: Base, brief: BriefRow): Promise<ClosedRound> {
-  if (base.kind === 'unresolved') {
-    return { state: 'unknown', brief, reason: `the base cannot be resolved (${base.reason}): fetch it under that name, with its history, as git fetch origin main:main fetches main` };
-  }
-  const [shallow, atBase, atHead] = await Promise.all([isShallow(workspace.root), holdsPath(base.mergeBase, brief.file, workspace.root), holdsPath(base.head, brief.file, workspace.root)]);
-  // A merge base read in a history cut short can be older than the one the
-  // whole history has, and a file absent from it present at the true one.
-  if (shallow !== false) {
-    return { state: 'unknown', brief, reason: 'the history is shallow, or git cannot say that it is not, and a merge base found in it may be older than the one the whole history has: fetch the whole history' };
-  }
-  if (atBase === null || atHead === null) return { state: 'unknown', brief, reason: `git could not list ${brief.file} at the merge base with ${base.ref}, or at HEAD` };
-  if (atBase) return { state: 'archived-before', brief, ref: base.ref, mergeBase: base.mergeBase };
-  // Absent from HEAD as well, the archive is not committed, or the file is
-  // not the one git names: neither is the archive this branch committed.
-  if (!atHead) return { state: 'unknown', brief, reason: `${brief.file} is not committed at HEAD; commit the archive` };
-  return { state: 'waiting-to-merge', brief, ref: base.ref, mergeBase: base.mergeBase };
-}
-
-/** The note on doctor's `brief` line for a branch that names a brief spec-brief has archived. */
-function describeClosedRound(closed: ClosedRound): string {
-  const { id, file } = closed.brief;
-  switch (closed.state) {
-    case 'waiting-to-merge':
-      return `brief ${id} was archived on this branch, which waits to merge: ${file} is in HEAD and not at the merge base with ${closed.ref}, ${closed.mergeBase.slice(0, 12)}, so this fails nothing; the hook holds every write on the branch all the same`;
-    case 'archived-before':
-      return `brief ${id} was archived before this branch: ${file} is at the merge base with ${closed.ref}, ${closed.mergeBase.slice(0, 12)}, so the branch is a closed round's, used again, and every write on it is held`;
-    case 'unknown':
-      return `whether brief ${id} was archived on this branch, which waits to merge, cannot be told: ${closed.reason}`;
-  }
-}
-
-/**
  * The release of spec-harness installed in a work tree, where the hook's
  * line, init's and the plugin's, names its script under the project's
  * `node_modules`; `null` where none is, or its manifest gives no version.
@@ -682,7 +641,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // five things below are asked at once, and none waits on a module.
   const [configure, round, setup, signing] = await Promise.all([import('./configure.js'), import('./round.js'), import('./setup.js'), import('./signers.js')]);
   const { describeBase, describeClaudeCode, describeClaudeRelease, describeGitHook, describeHooksOff, describeInstalls, describePlugin, describePluginAhead, describePluginScripts, describePresence, describeSignerKeys, describeSignerProblem, describeSigners, earlierTool, guardSwitchedOff, guardWired, NO_SESSION_START, NO_TURN_END, wiringState } = configure;
-  const { diagnoseBrief, specBriefPlugin } = round;
+  const { closedRound, describeClosedRound, diagnoseBrief, specBriefPlugin } = round;
   const { gitHook } = setup;
   const { notFido2, readAllowedSigners } = signing;
   // The siblings as git's hook finds them in this work tree: its own

@@ -75,6 +75,8 @@ export interface Options {
   /** `gitlab`, `sarif` and `github` only for `audit` and `premises`, whose findings have places. */
   readonly format: 'pretty' | 'json' | FindingFormat;
   readonly strict: boolean;
+  /** audit: pass where nothing names a brief, where that is exit 2 without it. */
+  readonly ifRound: boolean;
   readonly help: boolean;
   readonly version: boolean;
   /** init: apply the plan instead of printing it. */
@@ -108,6 +110,7 @@ export function parseOptions(argv: readonly string[]): Options {
     root: { type: 'string' },
     format: { type: 'string' },
     strict: { type: 'boolean' },
+    'if-round': { type: 'boolean' },
     write: { type: 'boolean' },
     'git-hook': { type: 'boolean' },
     'block-on-failure': { type: 'boolean' },
@@ -173,6 +176,7 @@ export function parseOptions(argv: readonly string[]): Options {
     root: values.root,
     format,
     strict: values.strict === true,
+    ifRound: values['if-round'] === true,
     help: values.help === true,
     version: values.version === true,
     write: values.write === true,

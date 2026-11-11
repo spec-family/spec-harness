@@ -17,7 +17,7 @@ const TAKES: Readonly<Record<string, readonly string[]>> = {
   escalate: ['brief', 'root', 'format', 'path', 'reason', 'option', 'recommend', 'list', 'show'],
   rule: ['root', 'format', 'allow', 'deny', 'note'],
   rulings: ['brief', 'base', 'root', 'format'],
-  audit: ['brief', 'base', 'root', 'format', 'strict'],
+  audit: ['brief', 'base', 'root', 'format', 'strict', 'if-round'],
   probe: ['brief', 'base', 'root', 'format', 'id', 'at'],
   premises: ['brief', 'root', 'format', 'strict'],
   init: ['root', 'format', 'write', 'git-hook', 'block-on-failure'],
@@ -32,6 +32,7 @@ const GIVEN: Readonly<Record<string, readonly string[]>> = {
   root: ['--root', 'elsewhere'],
   format: ['--format', 'json'],
   strict: ['--strict'],
+  'if-round': ['--if-round'],
   write: ['--write'],
   'git-hook': ['--git-hook'],
   'block-on-failure': ['--block-on-failure'],
@@ -99,7 +100,8 @@ describe('the help', () => {
   const reading = (option: string): string[] => Object.keys(TAKES).filter((command) => (TAKES[command] as readonly string[]).includes(option)).sort();
 
   it('gives each option that not every command reads to the commands that read it', () => {
-    for (const option of ['brief', 'base', 'strict']) expect(said(option), option).toEqual(reading(option));
+    for (const option of ['brief', 'base', 'strict', 'if-round']) expect(said(option), option).toEqual(reading(option));
+    expect(reading('if-round')).toEqual(['audit']);
     expect(HELP).toContain('--root <dir>        Run from another directory, which must exist. For every command.\n');
     expect(HELP).toContain(`--block-on-failure  onFailure "block" on init's entries but the one as a turn ends. For init.\n`);
     expect(reading('block-on-failure')).toEqual(['init']);

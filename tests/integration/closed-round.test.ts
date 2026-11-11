@@ -250,3 +250,45 @@ describe('the turn report on a closed round\'s branch', () => {
     expect(await hook(repo, stop)).toEqual({ code: 0, stderr: '', stdout: `${JSON.stringify({ systemMessage: said })}\n` });
   });
 });
+
+describe('audit --if-round on a closed round\'s branch', () => {
+  const ARCHIVED_HERE = (mergeBase: string): string =>
+    `brief 020 was archived on this branch, which waits to merge: ${ARCHIVED} is in HEAD and not at the merge base with main, ${mergeBase.slice(0, 12)}, and spec-brief archive checked the round as it archived it, so there is no round to audit, and --if-round passes the run`;
+  const FAILED = { code: 2, stdout: '', stderr: `spec-harness: ${PROBLEM}\n` };
+
+  it('passes the branch that archived its brief, the last pull request of every round, as git tells it as doctor does', async () => {
+    const repo = closedRound();
+    const line = ARCHIVED_HERE(repo.git('merge-base', 'main', 'HEAD'));
+    expect(await cli(['audit', '--if-round'], repo.root)).toEqual({ code: 0, stdout: `${line}\n`, stderr: '' });
+    const json = await cli(['audit', '--if-round', '--format', 'json'], repo.root);
+    expect({ code: json.code, stderr: json.stderr }).toEqual({ code: 0, stderr: `spec-harness: ${line}\n` });
+    expect(parsed(json)).toMatchObject({ ok: true, brief: null, counts: { error: 0, warning: 0, note: 0 }, findings: [] });
+    expect(await cli(['audit', '--if-round', '--format', 'github'], repo.root)).toEqual({ code: 0, stdout: '', stderr: `spec-harness: ${line}\n` });
+    // As CI names the branch, on a detached head.
+    const head = repo.git('rev-parse', 'HEAD');
+    repo.git('checkout', '-q', '--detach');
+    expect(await cli(['audit', '--if-round'], repo.root, { env: { GITHUB_HEAD_REF: 'brief/020-compute' } })).toEqual({ code: 0, stdout: `${ARCHIVED_HERE(repo.git('merge-base', 'main', head))}\n`, stderr: '' });
+    repo.git('checkout', '-q', 'brief/020-compute');
+    // Without the flag it fails as it did, and so does a brief the flag or the argument names, which no branch archived.
+    expect(await cli(['audit'], repo.root)).toEqual(FAILED);
+    expect(await cli(['audit', '--if-round', '--brief', '020'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: the flag names brief 020, which is archived; a closed round writes nothing\n' });
+    expect(await cli(['audit', '020', '--if-round'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: the argument names brief 020, which is archived; a closed round writes nothing\n' });
+  });
+
+  it('fails where the brief was archived before the branch, or git cannot say, with what doctor says of it', async () => {
+    const repo = closedRound();
+    const archive = repo.git('rev-parse', 'HEAD');
+    // The base names no commit: git cannot say.
+    const nowhere = UNTOLD('the base cannot be resolved ("nowhere" names no commit): fetch it under that name, with its history, as git fetch origin main:main fetches main');
+    expect(await cli(['audit', '--if-round', '--base', 'nowhere'], repo.root)).toEqual({ code: 2, stdout: '', stderr: `spec-harness: ${PROBLEM}; ${nowhere}\n` });
+    // A closed round's branch used again, after it merged.
+    repo.git('checkout', '-q', 'main');
+    repo.git('merge', '-q', '--no-ff', '-m', 'Merge brief 020', 'brief/020-compute');
+    repo.git('checkout', '-q', 'brief/020-compute');
+    repo.write('src/app/a.ts', 'again;\n');
+    repo.commit('More work after the merge');
+    const before = `brief 020 was archived before this branch: ${ARCHIVED} is at the merge base with main, ${archive.slice(0, 12)}, so the branch is a closed round's, used again, and every write on it is held`;
+    expect(await cli(['audit', '--if-round'], repo.root)).toEqual({ code: 2, stdout: '', stderr: `spec-harness: ${PROBLEM}; ${before}\n` });
+    expect(await cli(['audit'], repo.root)).toEqual(FAILED);
+  });
+});

@@ -377,6 +377,23 @@ with @spec-family/spec-harness 0.22.0 and this change, spec-brief 0.12.0
 An exit code that changes for a tree that failed is a minor release
 (spec-core's ADR-0009).
 
+*Amended 2026-11-11.* **`audit --if-round` passes the branch that archived
+its brief.** `--if-round` is a flag of round 28 for a CI job that runs on
+every branch: where nothing names a brief, `audit` says there is no round
+to audit and exits 0, where it exits 2. A round's last pull request still
+names its brief, which spec-brief lists as archived, so a job that runs
+`audit --if-round` failed every round there, after `spec-brief archive`
+had checked the round as it archived it. The maintainer decided that under
+the flag that branch is no round to audit either, told by the test
+`doctor` makes of it in the amendment of 2026-10-24: `closedRound`, moved
+from `cli.ts` to `round.ts` so that both commands call one copy, says
+`waiting-to-merge`, and `audit` says so in a line and exits 0. A brief
+archived before the branch, and one git cannot say of, fail, exit 2, with
+what `doctor` says of them after the problem; one the flag, `SPEC_BRIEF`
+or the argument names fails as before, since no branch archived it.
+Without the flag nothing changes, and the hook holds every write on the
+branch as before.
+
 ## Consequences
 
 No file records the active brief, so no file can record it wrongly, and two

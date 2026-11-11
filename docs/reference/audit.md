@@ -79,14 +79,33 @@ A brief that declares no assertion says `goals: none declared`, and draws no war
 - The fingerprint is the SHA-256 of the rule, the file and the finding's `subject` - the assertion, ruling, dependency or name it is about - never of its message or line, so a reworded message or a line added above does not read as one problem fixed and another found.
 - SARIF carries the fingerprint as `partialFingerprints.specHarnessFinding`, with what was measured as a note.
 
+## In CI
+
+A job that runs on every branch audits the round on a brief's branch, and on any other branch there is no round to audit. `--if-round` passes that run: where no argument, `--brief`, `SPEC_BRIEF` or branch names a brief ([Which brief](rounds.md#which-brief)), `audit` says so in one line and exits 0, where without the flag it exits 2. It asks spec-brief nothing then, so a repository with no `briefs/`, or without spec-brief installed, passes too.
+
+- The branch that archived its brief is no round to audit either. A round archives its brief on its own branch before the branch merges, and the branch still names the brief, which spec-brief then lists as archived; `spec-brief archive` checked the round as it archived it. Under `--if-round`, where the branch names a brief spec-brief has archived and git says this branch archived it, as [`doctor`](doctor.md) tells it, the archived file in HEAD and not at the merge base of the base and HEAD, `audit` says so in one line and exits 0: `brief 020 was archived on this branch, which waits to merge: briefs/archive/020_compute.md is in HEAD and not at the merge base with main, 8835800a03b3, and spec-brief archive checked the round as it archived it, so there is no round to audit, and --if-round passes the run`. So the job checks out the whole history, with the base's branch in it, as one that runs `doctor` does.
+- A brief that is named and cannot be read fails as it does without the flag, exit 2: one spec-brief does not list; one spec-brief has archived that the flag, `SPEC_BRIEF` or the argument names; and spec-brief missing or unable to list the briefs where a brief is named. So does the branch's archived brief where the file is at the merge base already, a closed round's branch used again, and where git cannot say, as in a history that is shallow or where the base names no commit; the line then adds what `doctor` says of it: `the branch names brief 020, which is archived; a closed round writes nothing; whether brief 020 was archived on this branch, which waits to merge, cannot be told: the history is shallow, ...`.
+- A round that is named is audited as it is without the flag.
+- Where nothing names a brief, the line is `no brief is named by --brief, SPEC_BRIEF or the branch, so there is no round to audit, and --if-round passes the run`. Under `pretty` the line, either one, is the output. The other formats print what a run that found nothing prints, and say the line on stderr, where a script or a forge reads none of it: `--format json` has `ok: true`, `brief`, `base` and `measured` `null`, every count 0 and no finding, dependency or install script; `gitlab` an empty report; `sarif` a run with no result, the line as its note; `github` nothing.
+
+On GitHub Actions, as a step of the [README's job](../../README.md#in-ci), which fetches the base with its history:
+
+```yaml
+      - if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-harness audit --if-round --format github
+```
+
 In GitLab CI:
 
 ```yaml
 spec-harness:
   image: node:22
+  variables:
+    GIT_DEPTH: 0 # the whole history, which the merge base is read from
   script:
+    - git fetch origin main # the base's branch, read as remotes/origin/main
     - npm ci
-    - npx --no-install @spec-family/spec-harness audit --format gitlab > gl-spec-harness.json
+    - npx --no-install @spec-family/spec-harness audit --if-round --format gitlab > gl-spec-harness.json
   artifacts:
     when: always
     reports:

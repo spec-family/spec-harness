@@ -10,7 +10,8 @@ import { dirname, join } from 'node:path';
 
 import { describeMeasured } from './audit.js';
 import { briefIdFromBranch } from './branch.js';
-import { findActive } from './briefs.js';
+import { findActive, type ActiveBrief } from './briefs.js';
+import { CONFIG_FILE } from './config.js';
 import { formatFindings } from './formats.js';
 import { isDirectory, isFile } from './fs.js';
 import { readJUnit, type JUnitRead } from './junit.js';
@@ -19,12 +20,15 @@ import { createReader } from './reader.js';
 import {
   buildContext,
   checkRulings,
+  closedRound,
+  describeClosedRound,
   briefText,
   listEscalations,
   raiseEscalation,
   recordRuling,
   resolveBase,
   runAudit,
+  type ClosedRound,
 } from './round.js';
 import { renderMemo, type EscalationOption } from './rulings.js';
 import { runCommand, withWorktree } from './sandbox.js';
@@ -35,6 +39,7 @@ import {
   EXIT_FAILED,
   EXIT_OK,
   json,
+  namedId,
   UsageError,
   version,
   type CliIO,
@@ -46,18 +51,28 @@ import {
 const reader = createReader();
 
 /**
- * The brief a command acts on: a positional id, else the active one. A
- * command that needs one and has none is a usage error. The command line
- * refuses the id beside `--brief` before it gets here (usage.ts).
+ * What names the brief a command acts on, among the briefs spec-brief
+ * lists: a positional id, else the active one. The command line refuses the
+ * id beside `--brief` before it gets here (usage.ts).
  */
-export async function targetBrief(workspace: Workspace, options: Options, io: CliIO, positional: string | undefined): Promise<{ brief: BriefRow; briefs: BriefRow[] }> {
+async function namedBrief(workspace: Workspace, options: Options, io: CliIO, positional: string | undefined): Promise<{ active: ActiveBrief; briefs: BriefRow[] }> {
   const briefs = await workspace.siblings.briefs();
   const fromBranch = briefIdFromBranch(workspace.config.branches, workspace.branch);
-  const active = findActive(briefs, { argument: positional, flag: options.brief, environment: io.env['SPEC_BRIEF'], branch: fromBranch });
+  return { active: findActive(briefs, { argument: positional, flag: options.brief, environment: io.env['SPEC_BRIEF'], branch: fromBranch }), briefs };
+}
+
+/** The brief named, where a command that needs one and has none is a usage error. */
+function briefNamed(active: ActiveBrief): BriefRow {
   const { brief, note, problem } = describeActive(active);
   if (problem !== null) throw new UsageError(problem);
   if (brief === null) throw new UsageError(note);
-  return { brief, briefs };
+  return brief;
+}
+
+/** The brief a command acts on: a positional id, else the active one. */
+export async function targetBrief(workspace: Workspace, options: Options, io: CliIO, positional: string | undefined): Promise<{ brief: BriefRow; briefs: BriefRow[] }> {
+  const { active, briefs } = await namedBrief(workspace, options, io, positional);
+  return { brief: briefNamed(active), briefs };
 }
 
 const MARK: Record<Finding['severity'], string> = { error: 'error  ', warning: 'warning', note: 'note   ' };
@@ -99,9 +114,57 @@ export async function contextCommand(options: Options, io: CliIO): Promise<numbe
 
 /* ------------------------------------------------------------------- audit */
 
+/**
+ * What `audit --if-round` says where nothing names a brief: a CI job that
+ * runs on every branch audits the round on a brief's branch and passes on
+ * every other, where it had to copy the branch templates into a condition
+ * of its own to skip the exit 2.
+ */
+const NO_ROUND = 'no brief is named by --brief, SPEC_BRIEF or the branch, so there is no round to audit, and --if-round passes the run';
+
+/** What `audit --if-round` says on the branch that archived its brief, the last commit of its round, which waits to merge. */
+function archivedHere({ brief, ref, mergeBase }: Extract<ClosedRound, { readonly ref: string }>): string {
+  return `brief ${brief.id} was archived on this branch, which waits to merge: ${brief.file} is in HEAD and not at the merge base with ${ref}, ${mergeBase.slice(0, 12)}, and spec-brief archive checked the round as it archived it, so there is no round to audit, and --if-round passes the run`;
+}
+
+/**
+ * The answer where there is no round: the line, and in a format a script or
+ * a forge reads, the document a run that found nothing prints, with the
+ * line on stderr, where it reads none of it.
+ */
+function noRound(options: Options, io: CliIO, line: string): number {
+  if (options.format === 'pretty') {
+    io.stdout.write(`${line}\n`);
+    return EXIT_OK;
+  }
+  io.stderr.write(`spec-harness: ${line}\n`);
+  if (options.format === 'json') {
+    io.stdout.write(json('audit', { ok: true, brief: null, base: null, counts: { error: 0, warning: 0, note: 0 }, measured: null, findings: [], dependencies: [], installScripts: [] }));
+  } else {
+    io.stdout.write(formatFindings(options.format, [], { file: CONFIG_FILE, version: version(), summary: line }));
+  }
+  return EXIT_OK;
+}
+
 export async function auditCommand(options: Options, io: CliIO): Promise<number> {
   const workspace = await openWorkspace(options, io);
-  const { brief } = await targetBrief(workspace, options, io, options.positionals[0]);
+  // Read as the hook reads it, before spec-brief is asked anything
+  // (ADR-0004): a repository with no briefs, where spec-brief cannot list
+  // any, has no round either. A name that names no brief spec-brief lists is
+  // a name, and fails below as it did.
+  if (options.ifRound && options.positionals.length === 0 && namedId(workspace, options, io.env) === null) return noRound(options, io, NO_ROUND);
+  const { active } = await namedBrief(workspace, options, io, options.positionals[0]);
+  // A round's last commit archives its brief on its own branch, which still
+  // names it, and spec-brief's archive checked the round as it did. Under
+  // --if-round that branch has no round left to audit, told by git as
+  // doctor tells it (ADR-0004). A brief archived before the branch, or one
+  // git cannot say of, fails as it did, with what git said.
+  if (options.ifRound && active.kind === 'archived' && active.source === 'branch') {
+    const closed = await closedRound(workspace, await resolveBase(workspace, options.base), active.brief);
+    if (closed.state === 'waiting-to-merge') return noRound(options, io, archivedHere(closed));
+    throw new UsageError(`${describeActive(active).problem}; ${describeClosedRound(closed)}`);
+  }
+  const brief = briefNamed(active);
   const result = await runAudit(workspace, brief, reader, options.base);
   const { counts, findings, measured } = result.report;
   if (options.format === 'json') {

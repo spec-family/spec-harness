@@ -58,7 +58,7 @@ import {
 import { readRules, renderContext, type CitedDocument, type ContextPacket, type Rules } from './context.js';
 import type { DocumentReader } from './document.js';
 import { isDirectory, isFile, reachedBy, readJsonObject, readText, repositoryPath, stateDirectory, writeAtomic } from './fs.js';
-import { blameLine, changes, commonDirectory, isUncommitted, mergeBase, remoteDefault, revision, show, verifyCommit, workTreeRoot } from './git.js';
+import { blameLine, changes, commonDirectory, holdsPath, isShallow, isUncommitted, mergeBase, remoteDefault, revision, show, verifyCommit, workTreeRoot } from './git.js';
 import { decide, decideWritten, type Decision, type VerifiedRuling } from './guard.js';
 import { diffManifest, ecosystemOf, readManifestNames, type DependencyChange, type InstallScriptChange } from './manifests.js';
 import {
@@ -711,6 +711,49 @@ export async function diagnoseBrief(
     // to its mutant; it keeps any other error the stack it needs.
     if (!(error instanceof SiblingError)) throw error;
     return { id, problem: couldNotSay(id, error.message), branch: false, holds: byBranch, archived: null };
+  }
+}
+
+/**
+ * What a branch that names a brief spec-brief has archived is, as git tells
+ * it: the branch that archived the brief, whose round waits to merge, where
+ * the brief's archived file is in HEAD and not at the merge base of the base
+ * and HEAD; a branch whose brief was archived before it, where the file is
+ * at the merge base already; and cannot tell wherever git does not say,
+ * which fails doctor as such a branch did (ADR-0004).
+ */
+export type ClosedRound =
+  | { readonly state: 'waiting-to-merge' | 'archived-before'; readonly brief: BriefRow; readonly ref: string; readonly mergeBase: string }
+  | { readonly state: 'unknown'; readonly brief: BriefRow; readonly reason: string };
+
+export async function closedRound(workspace: Workspace, base: Base, brief: BriefRow): Promise<ClosedRound> {
+  if (base.kind === 'unresolved') {
+    return { state: 'unknown', brief, reason: `the base cannot be resolved (${base.reason}): fetch it under that name, with its history, as git fetch origin main:main fetches main` };
+  }
+  const [shallow, atBase, atHead] = await Promise.all([isShallow(workspace.root), holdsPath(base.mergeBase, brief.file, workspace.root), holdsPath(base.head, brief.file, workspace.root)]);
+  // A merge base read in a history cut short can be older than the one the
+  // whole history has, and a file absent from it present at the true one.
+  if (shallow !== false) {
+    return { state: 'unknown', brief, reason: 'the history is shallow, or git cannot say that it is not, and a merge base found in it may be older than the one the whole history has: fetch the whole history' };
+  }
+  if (atBase === null || atHead === null) return { state: 'unknown', brief, reason: `git could not list ${brief.file} at the merge base with ${base.ref}, or at HEAD` };
+  if (atBase) return { state: 'archived-before', brief, ref: base.ref, mergeBase: base.mergeBase };
+  // Absent from HEAD as well, the archive is not committed, or the file is
+  // not the one git names: neither is the archive this branch committed.
+  if (!atHead) return { state: 'unknown', brief, reason: `${brief.file} is not committed at HEAD; commit the archive` };
+  return { state: 'waiting-to-merge', brief, ref: base.ref, mergeBase: base.mergeBase };
+}
+
+/** The note on doctor's `brief` line for a branch that names a brief spec-brief has archived. */
+export function describeClosedRound(closed: ClosedRound): string {
+  const { id, file } = closed.brief;
+  switch (closed.state) {
+    case 'waiting-to-merge':
+      return `brief ${id} was archived on this branch, which waits to merge: ${file} is in HEAD and not at the merge base with ${closed.ref}, ${closed.mergeBase.slice(0, 12)}, so this fails nothing; the hook holds every write on the branch all the same`;
+    case 'archived-before':
+      return `brief ${id} was archived before this branch: ${file} is at the merge base with ${closed.ref}, ${closed.mergeBase.slice(0, 12)}, so the branch is a closed round's, used again, and every write on it is held`;
+    case 'unknown':
+      return `whether brief ${id} was archived on this branch, which waits to merge, cannot be told: ${closed.reason}`;
   }
 }
 

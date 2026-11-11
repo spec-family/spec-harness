@@ -11,6 +11,29 @@ cannot turn a run red. The family's policy is
 
 ## Unreleased
 
+### Added
+
+- **`audit --if-round` passes a run where there is no round to audit.**
+  Without it, `audit` exits 2 where no argument, `--brief`, `SPEC_BRIEF` or
+  branch names a brief, so a CI job that runs on every branch had to skip it
+  off a brief's branch itself, with the branch templates copied into a
+  condition of its own. With it, `audit` says in one line that there is no
+  round to audit and exits 0, before spec-brief is asked anything, so a
+  repository with no `briefs/`, and one without spec-brief, passes too. So
+  does the branch that archived its brief, a round's last pull request,
+  where `audit` exited 2 for a brief spec-brief lists as archived: where git
+  says this branch archived it, the archived file in HEAD and not at the
+  merge base with the base, the test `doctor` makes, the line says so and
+  that `spec-brief archive` checked the round then. A brief archived before
+  the branch, or one git cannot say of, fails, exit 2, with what `doctor`
+  says of it; any other brief that is named and cannot be read fails as it
+  did, and a round that is named is audited as it was. `--format json`
+  prints `ok: true`, with `brief`, `base` and `measured` `null` and nothing
+  found; `gitlab`, `sarif` and `github` print a report with no finding;
+  each says the line on stderr. Without the flag nothing changes. The CI
+  examples of [`audit`](docs/reference/audit.md#in-ci) run it, and check
+  out the whole history for the base.
+
 ### Changed
 
 - **spec-core's copy is at 92e46d4**, copied again by spec-core's

@@ -199,7 +199,7 @@ const SHAPE = literal({
     argument: { role: 'the escalation', instead: 'give it an id, as spec-harness escalate --list prints them' },
   },
   rulings: { options: ['brief', 'base', 'root', 'format'], ...ONE_BRIEF },
-  audit: { options: ['brief', 'base', 'root', 'format', 'strict'], ...ONE_BRIEF },
+  audit: { options: ['brief', 'base', 'root', 'format', 'strict', 'if-round'], ...ONE_BRIEF },
   probe: { options: ['brief', 'base', 'root', 'format', 'id', 'at'], ...ONE_BRIEF },
   premises: { options: ['brief', 'root', 'format', 'strict'], ...NO_ARGUMENT },
   init: { options: ['root', 'format', 'write', 'git-hook', 'block-on-failure'], ...NO_ARGUMENT },
