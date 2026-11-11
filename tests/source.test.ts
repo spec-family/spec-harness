@@ -215,7 +215,7 @@ describe('the release', () => {
     const pkg = json('package.json');
     expect(pkg['repository']).toEqual({ type: 'git', url: 'git+https://github.com/spec-family/spec-harness.git' });
     expect(pkg['bugs']).toEqual({ url: 'https://github.com/spec-family/spec-harness/issues' });
-    expect(pkg['homepage']).toBe('https://github.com/spec-family/spec-harness#readme');
+    expect(pkg['homepage']).toBe('https://spec-family.github.io');
   });
 
   it('carries the package version in the plugin manifest, and in no marketplace entry', () => {
