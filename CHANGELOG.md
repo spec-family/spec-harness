@@ -9,6 +9,24 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Fixed
+
+- **`doctor` knows Azure Pipelines and Jenkins as CI runners.** It read
+  only `CI`, which neither sets, so there it looked for the Claude Code
+  plugin a project turns on, and for the release of a `claude` the runner
+  does not have, and `--strict` failed for both, where on GitHub Actions and
+  GitLab CI neither is looked for or required. Where `CI` is not set,
+  `TF_BUILD` set to anything but `false` or `0`, as Azure Pipelines sets it,
+  says a runner, and so does `JENKINS_URL` set to anything, as Jenkins sets
+  it; `CI` set to `false` or `0` still says no runner, whatever else is set.
+  The detail names the variable that says it, `TF_BUILD is set, so this is
+  a CI runner`, and is unchanged for `CI`
+  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md),
+  amended 2026-11-11). No field is renamed or taken away, and no run that
+  passed fails for it.
+
 ## 0.24.2
 
 The MCP server is listed in the official MCP Registry from this release on,

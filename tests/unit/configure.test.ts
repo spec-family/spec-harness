@@ -1188,22 +1188,42 @@ describe('the plugin that settings turn on, and whether it is on this machine (A
     const RUNNER = 'CI is set, so this is a CI runner, where no Claude Code session runs: the plugin is not looked for here, and neither is the package its hooks run';
     const ON = `the spec-harness plugin is on (${ID} in .claude/settings.json)`;
 
-    it('is a CI runner where CI is set to anything but false or 0', () => {
-      for (const value of ['true', '1', 'TRUE', ' yes ', 'x']) expect(onCiRunner({ CI: value }), value).toBe(true);
-      for (const value of [undefined, '', '  ', 'false', 'FALSE', ' False ', '0', ' 0 ']) expect(onCiRunner({ CI: value }), String(value)).toBe(false);
-      expect(onCiRunner({})).toBe(false);
-      // Another forge's variable alone is no runner here.
-      expect(onCiRunner({ GITHUB_ACTIONS: 'true', GITLAB_CI: 'true' })).toBe(false);
+    it('is a CI runner where CI is set to anything but false or 0, and says so by CI', () => {
+      for (const value of ['true', '1', 'TRUE', ' yes ', 'x']) expect(onCiRunner({ CI: value }), value).toBe('CI');
+      for (const value of [undefined, '', '  ', 'false', 'FALSE', ' False ', '0', ' 0 ']) expect(onCiRunner({ CI: value }), String(value)).toBeNull();
+      expect(onCiRunner({})).toBeNull();
+      // GitHub's and GitLab's own variables alone are no runner here: both set CI.
+      expect(onCiRunner({ GITHUB_ACTIONS: 'true', GITLAB_CI: 'true' })).toBeNull();
+    });
+
+    it('is one where CI is not set, by TF_BUILD set to anything but false or 0, as Azure Pipelines sets it, or JENKINS_URL set to anything, as Jenkins sets it (amended 2026-11-11)', () => {
+      for (const value of ['True', 'true', '1', ' x ']) expect(onCiRunner({ TF_BUILD: value }), value).toBe('TF_BUILD');
+      for (const value of ['', '  ', 'false', 'False', ' FALSE ', '0', ' 0 ']) expect(onCiRunner({ TF_BUILD: value }), value).toBeNull();
+      for (const value of ['http://jenkins.example:8080/', ' x ', 'false', '0']) expect(onCiRunner({ JENKINS_URL: value }), value).toBe('JENKINS_URL');
+      for (const value of ['', '  ']) expect(onCiRunner({ JENKINS_URL: value }), JSON.stringify(value)).toBeNull();
+      // A CI that is set says first, and false or 0 says no runner, whatever else is set.
+      expect(onCiRunner({ CI: 'true', TF_BUILD: 'True', JENKINS_URL: 'http://j/' })).toBe('CI');
+      expect(onCiRunner({ CI: 'false', TF_BUILD: 'True' })).toBeNull();
+      expect(onCiRunner({ CI: '0', JENKINS_URL: 'http://j/' })).toBeNull();
+      // A CI that is blank is not set.
+      expect(onCiRunner({ CI: ' ', TF_BUILD: 'True' })).toBe('TF_BUILD');
+      expect(onCiRunner({ CI: '', JENKINS_URL: 'http://j/' })).toBe('JENKINS_URL');
+      // Azure Pipelines before Jenkins, and a TF_BUILD that says no leaves Jenkins to say.
+      expect(onCiRunner({ TF_BUILD: 'True', JENKINS_URL: 'http://j/' })).toBe('TF_BUILD');
+      expect(onCiRunner({ TF_BUILD: 'False', JENKINS_URL: 'http://j/' })).toBe('JENKINS_URL');
     });
 
     it('leaves the plugin unchecked where no cache holds a version of it, whatever else would be said, and reads one a cache holds', () => {
       const unchecked = { state: 'unchecked', detail: RUNNER };
-      expect(pluginPresence(plugin, [on(PROJECT)], [], true)).toEqual(unchecked);
-      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })], true)).toEqual(unchecked);
-      expect(pluginPresence({ id: 'spec-harness@inline', file: PROJECT }, [on(PROJECT)], [], true)).toEqual(unchecked);
-      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null }), dir({ directory: SEED, cached: true })], true)).toEqual({ state: 'present', detail: null });
+      expect(pluginPresence(plugin, [on(PROJECT)], [], 'CI')).toEqual(unchecked);
+      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })], 'CI')).toEqual(unchecked);
+      expect(pluginPresence({ id: 'spec-harness@inline', file: PROJECT }, [on(PROJECT)], [], 'CI')).toEqual(unchecked);
+      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null }), dir({ directory: SEED, cached: true })], 'CI')).toEqual({ state: 'present', detail: null });
+      // By the variable that says it is a runner.
+      expect(pluginPresence(plugin, [on(PROJECT)], [], 'TF_BUILD')).toEqual({ state: 'unchecked', detail: RUNNER.replace(/^CI /, 'TF_BUILD ') });
+      expect(pluginPresence(plugin, [on(PROJECT)], [], 'JENKINS_URL')).toEqual({ state: 'unchecked', detail: RUNNER.replace(/^CI /, 'JENKINS_URL ') });
       // Off a runner, as it was.
-      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })], false).state).toBe('unknown');
+      expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })], null).state).toBe('unknown');
       expect(pluginPresence(plugin, [on(PROJECT)], [dir({ registry: null })]).state).toBe('unknown');
     });
 

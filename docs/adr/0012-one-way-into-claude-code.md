@@ -680,6 +680,18 @@ change for a tree that passed is a minor release (spec-core's ADR-0009).
 `init` is unchanged: on a runner it reads the plugin as it reads one that
 cannot be told to be there, and writes neither entry.
 
+*Amended 2026-11-11.* **Azure Pipelines and Jenkins are runners too.**
+Neither sets `CI`: Azure Pipelines sets `TF_BUILD` to `True` on every job,
+and Jenkins sets `JENKINS_URL` to its own address. On either, a plugin-only
+project's `doctor --strict` failed where on GitHub Actions and GitLab CI it
+passed. So where `CI` is not set, `TF_BUILD` set to anything but `false` or
+`0` says a runner, and so does `JENKINS_URL` set to anything. `CI` set to
+`false` or `0` still says no runner, whatever else is set: it is the one
+variable a person sets to say so. The detail names the variable that said
+it, and `CI` is said in the words it was. No other forge's variable is
+read, and none for any other purpose; nothing is renamed or taken away, and
+no run that passed can fail for it.
+
 ## Consequences
 
 - A plugin turned on by managed settings or `--settings` is invisible to
