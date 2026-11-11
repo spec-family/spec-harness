@@ -251,6 +251,14 @@ and `holds` an empty `--brief` gives in `diagnoseBrief`, `false` made
 pull requests was swept before it merged, and each ended with no undetected
 mutant new against main's but those two.
 
+For 0.24.2, the first release swept on vitest 5, the sweep of b32c85b (run
+42970849086) read 98.00% over 12,601 mutants, 97.41% with every timeout
+lost, in shards of 11m07s to 35m46s, and the `break` stays 95. Its 252
+undetected mutants are 0.24.0's, mutant for mutant, and none survived
+having run no test. The core sweep of b32c85b (run 42970848876) read 98.69%
+over 7,305, as it did on vitest 4. 0.24.1 changed documents alone, and no
+sweep ran for it.
+
 One runner took 69 to 130 minutes for the full sweep. Before any sharded
 sweep ran, the report of eb39599 was cut into shards the way Stryker writes
 them and put back by the merge: all 7,507 verdicts came back with their

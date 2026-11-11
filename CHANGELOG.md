@@ -9,7 +9,13 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
-## Unreleased
+## 0.24.2
+
+The MCP server is listed in the official MCP Registry from this release on,
+and the suite and both mutation sweeps run on vitest 5. Nothing the tool
+prints, exits with or answers changes. The README, the package and the
+plugin describe the guard as one on the agent's writes, where they said every
+write: a write through the shell passes it, and the audit finds it.
 
 ### Added
 

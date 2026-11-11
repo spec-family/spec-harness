@@ -1,6 +1,6 @@
 # spec-harness
 
-**Rounds of agent work under a brief a person approved: what the agent needs to start, a guard on every write, an escalation a person signs when the brief is not enough, and an audit when it ends.**
+**Rounds of agent work under a brief a person approved: what the agent needs to start, a guard on the agent's writes, an escalation a person signs when the brief is not enough, and an audit when it ends.**
 
 spec-harness is the agent-facing member of the [spec-\* tools](https://github.com/spec-family/spec-core#the-family). It calls no model and writes no content - the agent is the model. It gives the agent the contract and the facts, and answers, the same way every time, whether the agent stayed inside the lines. No runtime dependencies, no account, no network.
 
@@ -223,7 +223,7 @@ Run `doctor` without `--strict`, which fails where the release of Claude Code ca
 
 ## Verified
 
-CI's full mutation sweep reads **98.00% over 12,601 mutants** on cc9cab1 (run 42513980035), the sweep of 0.24.0, and its `break` is 95. The core sweep, which mutates the pure modules against the unit suite on every change, reads 98.69% over 7,305 mutants on b958709 (run 42553300482), and fails a change under 97. [ADR-0010](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0010-toolchain-and-verification.md) has each release's sweep, and what a survivor it adds must be before it ships.
+CI's full mutation sweep reads **98.00% over 12,601 mutants** on b32c85b (run 42970849086), the sweep of 0.24.2, and its `break` is 95. The core sweep, which mutates the pure modules against the unit suite on every change, reads 98.69% over 7,305 mutants on b32c85b (run 42970848876), and fails a change under 97. [ADR-0010](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0010-toolchain-and-verification.md) has each release's sweep, and what a survivor it adds must be before it ships.
 
 ## Design
 
