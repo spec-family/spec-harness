@@ -168,7 +168,7 @@ The MCP server, on stdio, which `init` and the plugin register:
 | `audit_round` | Did the round stay inside the lines, as `audit` reports it. |
 | `list_rounds` | The live briefs, what each waits on, and which are ready to start. |
 
-With them, four prompts, the workflows of the skills: `draft-brief`, `split-goal`, `run-round` and `close-round` ([`mcp`](docs/reference/mcp.md)).
+With them, four prompts, the workflows of the skills: `draft-brief`, `split-goal`, `run-round` and `close-round` ([`mcp`](docs/reference/mcp.md)). The server is listed in the official MCP Registry as `io.github.spec-family/spec-harness`.
 
 ### `init`
 

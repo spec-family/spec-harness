@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.spec-family/spec-harness",
+  "title": "spec-harness",
+  "description": "Rounds of agent work under a brief: context to start, a check on each path, an audit at the end.",
+  "repository": {
+    "url": "https://github.com/spec-family/spec-harness",
+    "source": "github",
+    "id": "1388054407"
+  },
+  "version": "0.24.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@spec-family/spec-harness",
+      "version": "0.24.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

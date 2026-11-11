@@ -11,6 +11,20 @@ cannot turn a run red. The family's policy is
 
 ## Unreleased
 
+### Added
+
+- **The MCP server is listed in the official MCP Registry**, as
+  `io.github.spec-family/spec-harness`, from this release on. `package.json`
+  names the server as its `mcpName`, which the registry reads from npm to
+  tell the package is this repository's, and `server.json` lists the package
+  at its version, started with `mcp`: the command `.mcp.json` runs, without
+  the root only Claude Code names. The maintainer lists each release once
+  npm serves it, with a workflow dispatched by hand, and `pack` refuses a tag
+  whose `server.json` names another version
+  ([ADR-0011](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0011-releases-are-staged-by-ci.md),
+  amended 2026-11-11). Nothing the tool prints, exits with or answers
+  changes.
+
 ### Changed
 
 - **The suite and both mutation sweeps run on vitest 5.0.5, and the hold on
