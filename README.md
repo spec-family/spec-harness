@@ -1,6 +1,6 @@
 # spec-harness
 
-**Rounds of agent work under a brief a person approved: what the agent needs to start, a guard on every write, an escalation a person signs when the brief is not enough, and an audit when it ends.**
+**Rounds of agent work under a brief a person approved: what the agent needs to start, a guard on the agent's writes, an escalation a person signs when the brief is not enough, and an audit when it ends.**
 
 spec-harness is the agent-facing member of the [spec-\* tools](https://github.com/spec-family/spec-core#the-family). It calls no model and writes no content - the agent is the model. It gives the agent the contract and the facts, and answers, the same way every time, whether the agent stayed inside the lines. No runtime dependencies, no account, no network.
 
