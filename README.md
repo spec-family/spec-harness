@@ -195,7 +195,7 @@ Use the plugin or `init`'s entries in `.claude/settings.json` and `.mcp.json`, n
 
 ## In CI
 
-`doctor` in a CI job checks what the repository holds for the guard: each sibling no older than this release needs, Claude Code's settings running the guard once and on a line that guards, and the branch naming a brief a round can work under. On GitHub Actions:
+`doctor` in a CI job checks what the repository holds for the guard: each sibling no older than this release needs, Claude Code's settings running the guard once and on a line that guards, and the branch naming a brief a round can work under. `audit --if-round` audits the round on a brief's branch, and passes on any other, where nothing names a brief. On GitHub Actions:
 
 ```yaml
 jobs:
@@ -213,9 +213,11 @@ jobs:
       - run: npx --no-install @spec-family/spec-harness doctor
       - if: ${{ !cancelled() }} # with spec-guard installed
         run: npx --no-install @spec-family/spec-harness premises --format github
+      - if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-harness audit --if-round --format github
 ```
 
-Run `doctor` without `--strict`, which fails where the release of Claude Code cannot be told, as on a runner with no `claude`. On a CI runner the Claude Code plugin is neither looked for nor required. [`doctor`](docs/reference/doctor.md) has why the base needs its history, [`audit`](docs/reference/audit.md#for-a-forge) a GitLab job that reports its findings as Code Quality, and spec-core's [adopting guide](https://github.com/spec-family/spec-core/blob/main/docs/adopting.md) the whole family in one job.
+Run `doctor` without `--strict`, which fails where the release of Claude Code cannot be told, as on a runner with no `claude`. On a CI runner the Claude Code plugin is neither looked for nor required. [`doctor`](docs/reference/doctor.md) has why the base needs its history, [`audit`](docs/reference/audit.md#in-ci) what `--if-round` prints and a GitLab job that reports its findings as Code Quality, and spec-core's [adopting guide](https://github.com/spec-family/spec-core/blob/main/docs/adopting.md) the whole family in one job.
 
 ## Configuration
 

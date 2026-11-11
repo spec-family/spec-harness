@@ -689,3 +689,60 @@ describe('audit for a forge', () => {
     expect(await cli(['context', '--format', 'sarif'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: --format sarif is for audit and premises; context prints pretty or json\n' });
   });
 });
+
+describe('audit --if-round, where nothing names a brief', () => {
+  const LINE = 'no brief is named by --brief, SPEC_BRIEF or the branch, so there is no round to audit, and --if-round passes the run';
+
+  it('says there is no round in a line, exit 0, where it was exit 2, with no briefs and no spec-brief to ask', async () => {
+    // No briefs/ at all, and a repository with no spec-brief installed: neither is asked anything.
+    for (const plain of [repository({}), repository({}, null)]) {
+      expect((await cli(['audit'], plain.root)).code).toBe(2);
+      expect(await cli(['audit', '--if-round'], plain.root)).toEqual({ code: 0, stdout: `${LINE}\n`, stderr: '' });
+      expect(await cli(['audit', '--if-round', '--strict', '--base', 'main'], plain.root)).toEqual({ code: 0, stdout: `${LINE}\n`, stderr: '' });
+      // SPEC_BRIEF set and empty is as unset.
+      expect(await cli(['audit', '--if-round'], plain.root, { env: { SPEC_BRIEF: ' ' } })).toEqual({ code: 0, stdout: `${LINE}\n`, stderr: '' });
+    }
+    // A branch that names no brief by any template, beside briefs spec-brief lists.
+    const listed = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }) });
+    listed.git('checkout', '-q', '-b', 'fix/list-order');
+    expect(await cli(['audit', '--if-round'], listed.root)).toEqual({ code: 0, stdout: `${LINE}\n`, stderr: '' });
+  });
+
+  it('prints what a run that found nothing prints in each format a script or a forge reads, with the line on stderr', async () => {
+    const plain = repository({});
+    const json = await cli(['audit', '--if-round', '--format', 'json'], plain.root);
+    expect({ code: json.code, stderr: json.stderr }).toEqual({ code: 0, stderr: `spec-harness: ${LINE}\n` });
+    expect(parsed(json)).toMatchObject({ tool: 'spec-harness', command: 'audit', ok: true, brief: null, base: null, counts: { error: 0, warning: 0, note: 0 }, measured: null, findings: [], dependencies: [], installScripts: [] });
+    expect(await cli(['audit', '--if-round', '--format', 'gitlab'], plain.root)).toEqual({ code: 0, stdout: '[]\n', stderr: `spec-harness: ${LINE}\n` });
+    expect(await cli(['audit', '--if-round', '--format', 'github'], plain.root)).toEqual({ code: 0, stdout: '', stderr: `spec-harness: ${LINE}\n` });
+    const sarif = await cli(['audit', '--if-round', '--format', 'sarif'], plain.root);
+    expect({ code: sarif.code, stderr: sarif.stderr }).toEqual({ code: 0, stderr: `spec-harness: ${LINE}\n` });
+    const document = JSON.parse(sarif.stdout) as { runs: { invocations: { toolExecutionNotifications: { message: { text: string } }[] }[]; results: unknown[] }[] };
+    expect(document.runs[0]?.results).toEqual([]);
+    expect(document.runs[0]?.invocations[0]?.toolExecutionNotifications[0]?.message.text).toBe(LINE);
+  });
+
+  it('fails a brief that is named and cannot be read as it did, by whatever names it', async () => {
+    const plain = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }) });
+    const unknown = 'spec-harness: the flag names brief 404, and spec-brief knows no such brief\n';
+    expect(await cli(['audit', '--if-round', '--brief', '404'], plain.root)).toEqual({ code: 2, stdout: '', stderr: unknown });
+    expect(await cli(['audit', '--if-round'], plain.root, { env: { SPEC_BRIEF: '404' } })).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: the environment names brief 404, and spec-brief knows no such brief\n' });
+    expect(await cli(['audit', '404', '--if-round'], plain.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: the argument names brief 404, and spec-brief knows no such brief\n' });
+    plain.git('checkout', '-q', '-b', 'brief/999-nowhere');
+    expect(await cli(['audit', '--if-round'], plain.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: the branch names brief 999, and spec-brief knows no such brief\n' });
+    // A branch that names a brief where there are no briefs, and spec-brief that is not installed.
+    for (const bare of [repository({}), repository({}, null)]) {
+      bare.git('checkout', '-q', '-b', 'brief/001-x');
+      const run = await cli(['audit', '--if-round'], bare.root);
+      expect(run.code).toBe(2);
+      expect(run).toEqual(await cli(['audit'], bare.root));
+    }
+  });
+
+  it('audits a round that is named, as without it', async () => {
+    const without = await cli(['audit', '--format', 'json'], repo.root);
+    expect(without.code).toBe(1);
+    expect(await cli(['audit', '--format', 'json', '--if-round'], repo.root)).toEqual(without);
+    expect(await cli(['audit', '001', '--if-round'], repo.root)).toEqual(await cli(['audit', '001'], repo.root));
+  });
+});

@@ -9,7 +9,8 @@ An option, an argument or a value that is given and names nothing is refused: ex
   | Command | Reads |
   | --- | --- |
   | `context`, `rulings` | `--brief`, `--base`, `--root`, `--format` |
-  | `guard`, `audit`, `doctor` | `--brief`, `--base`, `--root`, `--format`, `--strict` |
+  | `guard`, `doctor` | `--brief`, `--base`, `--root`, `--format`, `--strict` |
+  | `audit` | `--brief`, `--base`, `--root`, `--format`, `--strict`, `--if-round` |
   | `probe` | `--brief`, `--base`, `--root`, `--format`, `--id`, `--at` |
   | `premises` | `--brief`, `--root`, `--format`, `--strict` |
   | `escalate` | `--brief`, `--root`, `--format`, `--path`, `--reason`, `--option`, `--recommend`, `--list`, `--show` |

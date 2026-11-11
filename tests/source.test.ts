@@ -424,7 +424,7 @@ describe('the README and the reference', () => {
     }));
     expect(rows.flatMap((row) => row.commands).sort()).toEqual(['audit', 'context', 'doctor', 'escalate', 'guard', 'hook', 'init', 'mcp', 'premises', 'probe', 'rule', 'rulings']);
     const every = [...new Set(rows.flatMap((row) => row.options))];
-    expect(every).toHaveLength(19);
+    expect(every).toHaveLength(20);
     for (const row of rows) {
       for (const command of row.commands) {
         for (const option of every) {

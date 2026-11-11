@@ -44,6 +44,7 @@ describe('options', () => {
       root: undefined,
       format: 'pretty',
       strict: false,
+      ifRound: false,
       help: false,
       version: false,
       write: false,
@@ -72,6 +73,7 @@ describe('options', () => {
       '--root', '/repo',
       '--format', 'json',
       '--strict',
+      '--if-round',
       '--write',
       '--git-hook',
       '--block-on-failure',
@@ -93,7 +95,7 @@ describe('options', () => {
       command: 'escalate',
       positionals: [],
       // Each once, in the order given, by its long name.
-      given: ['brief', 'base', 'root', 'format', 'strict', 'write', 'git-hook', 'block-on-failure', 'path', 'reason', 'option', 'recommend', 'list', 'show', 'allow', 'deny', 'note', 'id', 'at'],
+      given: ['brief', 'base', 'root', 'format', 'strict', 'if-round', 'write', 'git-hook', 'block-on-failure', 'path', 'reason', 'option', 'recommend', 'list', 'show', 'allow', 'deny', 'note', 'id', 'at'],
       // Every value of each option that takes one; a list has its own, and an option that takes none has no value.
       written: { brief: ['012'], base: ['origin/main'], root: ['/repo'], format: ['json'], reason: ['why'], recommend: ['Allow'], show: ['E-1'], note: ['n'], id: ['p'], at: ['head'] },
       brief: '012',
@@ -101,6 +103,7 @@ describe('options', () => {
       root: '/repo',
       format: 'json',
       strict: true,
+      ifRound: true,
       help: false,
       version: false,
       write: true,
