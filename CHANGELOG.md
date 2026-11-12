@@ -148,7 +148,10 @@ cannot turn a run red. The family's policy is
   Static mutants run last, mostly on such workers. The workers of one sweep
   now share the record through a file in Stryker's sandbox, read once when
   a worker starts and written whole after each run, as spec-core's do
-  (ADR-0010, amended 2026-11-12). Development tooling only: nothing
+  (ADR-0010, amended 2026-11-12). In the change's two full sweeps the
+  static mutants ran 9% and 11% fewer tests before their kills than in
+  main's of the same sources; the core sweep's did not move, and the
+  scores are main's. Development tooling only: nothing
   spec-harness decides or reports changed. Upgrading: nothing to do.
 
 ## 0.25.0
