@@ -1385,3 +1385,71 @@ count is at or past vitest 4's, the static mutants' most of all: in
 vitest's order a static mutant ran the longest unit files first. The job
 took 13m37s, within main's 9m23s to 14m22s, which is what one runner
 differs from another by.
+
+*Amended 2026-11-12.* **The order's record, shared between a sweep's
+workers.** The record of the amendment before was kept in the worker's
+memory, so a worker Stryker starts in place of one that timed out began
+with none, where on vitest 4 it read the cache file every worker rewrote
+after each run. Static mutants run last in each shard, after the timeouts,
+so mostly on such workers. spec-core found it in an experiment and took
+the fix first (its
+[ADR-0007](https://github.com/spec-family/spec-core/blob/main/docs/adr/0007-verification.md),
+the entry of 2026-11-12, and
+[ADR-0008](https://github.com/spec-family/spec-core/blob/main/docs/adr/0008-toolchain.md),
+amended 2026-11-12): its static mutants' tests before their kills came to
+23,734 to 29,259 in main's seven sweeps with the record in memory alone,
+against 11,731 to 17,936 on vitest 4, and with the record shared 17,664 in
+its experiment and 17,621 in the sweep of its pull request, spec-core#77.
+
+`vitest.mutation.config.ts` shares the record as spec-core's does: where
+the process is one of Stryker's workers (`STRYKER_MUTATOR_WORKER`), through
+`.vitest-order-record.json` in the folder it runs in, the sweep's sandbox,
+read once when the worker loads the configuration and written whole after
+each run, through a file of the process's own renamed over it. A process
+that is not a worker reads and writes none. The core sweep's suite takes
+the record from there, and each sweep has a sandbox of its own, so each
+shares its own. No workflow changes. `tests/mutation-shards.test.ts` holds
+it for both suites as spec-core's test does: vitest made as Stryker's
+runner makes it, in processes of their own in a sandbox of two files, and
+the functions that name, read and write the file as a library.
+
+The pull request's sweeps of two heads, each beside main's sweep of the
+same source: b22369c (full run 43235294813, core sweep in CI run
+43235294792) beside fd53349 (runs 43227686328 and 43227686538), and
+426f13b (runs 43250316312 and 43250316396) beside bbaa54c (runs
+43241750900 and 43241751212). And main's full sweeps before them, of
+89bcc4e, ac40ca6 and b32c85b (runs 43206529402, 43076735805 and
+42970849086), and its core sweeps of e469ee7, d4f46e9, ac40ca6 and 377ee47
+(CI runs 43211049148, 43191526750, 43076735879 and 43086600937):
+
+| | Main, before | Main, fd53349 | b22369c | Main, bbaa54c | 426f13b |
+| --- | --- | --- | --- | --- | --- |
+| Full sweep: score | 98.00% to 98.04% | 98.05% over 12,931 | 98.06% over 12,931 | 98.07% over 13,057 | 98.07% over 13,057 |
+| Undetected | 252 | 252 | 251 | 252 | 252 |
+| The static mutants' tests before their kills | 164,611 to 174,093 | 180,850 | 164,505 | 183,692 | 163,227 |
+| Per static kill | 87.5 to 93.1 | 92.2 | 83.9 | 92.3 | 82.0 |
+| Static kills after more than 200 tests | 149 to 163 | 169 | 140 | 169 | 143 |
+| Tests to a kill, not static | 3.68 to 3.76 | 3.72 | 3.68 | 3.69 | 3.63 |
+| Eight shards, the slowest (minutes) | 225.5 to 248.8, 35.8 to 46.1 | 263.0, 52.0 | 253.7, 52.3 | 250.1, 44.9 | 262.3, 51.0 |
+| Core sweep: score | 98.69% to 98.72% | 98.72% over 7,494 | 98.72% over 7,494 | 98.73% over 7,587 | 98.73% over 7,587 |
+| Per static kill | 65.1 to 72.1 | 66.8 | 69.4 | 68.5 | 67.6 |
+
+- **The full sweep's score is main's.** One static mutant of
+  `src/reader.ts` 19, a chain of replacements emptied, survived on main's
+  sweep of fd53349, timed out in b22369c's and survived in 426f13b's: it
+  stands at its timeout, and a timeout counts as detected. Beside it
+  nothing is new or gone in either pair, and the core sweep's 96
+  undetected are main's in both.
+- **The full sweep's static mutants ran 9% and 11% fewer tests before
+  their kills than main's sweeps of the same source**, under the lowest of
+  main's five, and 140 and 143 ran more than 200 against 149 to 169.
+  `src/commands.ts`, `src/siblings.ts`, `src/git.ts` and
+  `src/configure.ts` fell in both pairs, by 7% to 23%, and
+  `src/workspace.ts` by 1%; `src/fs.ts` and `src/cli.ts` fell 4% and 5%
+  in the first and rose 4% and 8% in the second.
+- **The core sweep's did not move**: 69.4 and 67.6 tests to a static kill,
+  within main's 65.1 to 72.1.
+- **The shards took 253.7 and 262.3 minutes, the slowest 52.3 and 51.0
+  against the job's 60.** Main's sweeps of the same sources took 263.0 and
+  250.1, their slowest 52.0 and 44.9: the long shard is main's, not this
+  change's, and the next amendment levels the shards.
