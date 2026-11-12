@@ -1989,6 +1989,37 @@ export function describeSigners(file: string, base: string | null, onBase: boole
  * agent's account cannot read too, and a PIV or PKCS#11 hardware key is
  * written as a plain key.
  */
+/**
+ * The key a `user.signingkey` names, as a type and its base64: the key
+ * itself after `key::`, as git takes one (git-config(1), user.signingKey),
+ * or the first two words of a public key's text. `null` for anything else.
+ */
+export function signingKeyOf(text: string): { readonly keyType: string; readonly key: string } | null {
+  const words = text.trim().replace(/^key::/, '').split(/\s+/);
+  const [keyType, key] = words;
+  return keyType !== undefined && key !== undefined && /^(?:ssh-|ecdsa-|sk-)/.test(keyType) ? { keyType, key } : null;
+}
+
+/**
+ * The note doctor gives where git signs every commit here with a key the
+ * allowed-signers file lists, or `null` where it does not: every commit
+ * made under this account is then signed by a signer, the agent's among
+ * them, so a ruling row the agent writes and commits counts (ADR-0006). A
+ * note: the setting is the person's, and a key the agent's account cannot
+ * reach is one ADR-0006 accepts.
+ */
+export function describeSigningEveryCommit(signers: readonly Pick<AllowedSigner, 'principals' | 'keyType' | 'key' | 'line'>[], signing: { readonly keyType: string; readonly key: string } | null): string | null {
+  // A FIDO2 key needs a touch for each signature, every commit's among them.
+  if (signing === null || signing.keyType.startsWith('sk-')) return null;
+  const listed = signers.find((signer) => signer.keyType === signing.keyType && signer.key === signing.key);
+  if (listed === undefined) return null;
+  return (
+    `note: git signs every commit here (commit.gpgsign) with ${listed.principals.join(',')}'s key, line ${listed.line} of the allowed signers, ` +
+    'so a ruling row an agent working under this account writes and commits is signed by an allowed signer and counts: ' +
+    'sign rulings with a key git does not sign every commit with, a FIDO2 key, ssh-keygen -t ed25519-sk, whose signature needs a touch, or turn commit.gpgsign off where agents commit'
+  );
+}
+
 export function describeSignerKeys(signers: readonly Pick<AllowedSigner, 'line' | 'principals' | 'keyType'>[]): string | null {
   if (signers.length === 0) return null;
   const named = signers.map((signer) => `${signer.principals.join(',')} (${signer.keyType}, line ${signer.line})`).join(', ');

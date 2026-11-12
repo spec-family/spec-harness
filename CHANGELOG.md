@@ -149,6 +149,12 @@ cannot turn a run red. The family's policy is
   history cut short, as a clone with `--depth` leaves it, where git can find
   an older merge base than the whole history has. A note fails nothing.
 
+- **doctor notes a key git signs every commit with** (`commit.gpgsign`,
+  an SSH `user.signingkey`) where the allowed-signers file lists it, and it
+  is no FIDO2 key: every commit an agent makes under the account is then
+  signed by an allowed signer, and a ruling row it writes counts. A note,
+  which fails nothing.
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such

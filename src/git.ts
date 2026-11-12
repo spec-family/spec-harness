@@ -457,3 +457,18 @@ export async function removeWorktree(path: string, cwd: string): Promise<boolean
   // always answers false is equivalent.
   return (await git(['worktree', 'remove', '--force', path], cwd, WORK_MS)).code === 0;
 }
+
+/**
+ * git's settings for signing a commit, as git reads them here, the
+ * person's global ones among them: whether it signs every commit, the
+ * format, and the key `user.signingkey` names, a path or `key::` and the
+ * key itself (git-config(1), commit.gpgSign and user.signingKey).
+ */
+export async function signingConfig(cwd: string): Promise<{ readonly every: boolean; readonly format: string | null; readonly key: string | null }> {
+  const [every, format, key] = await Promise.all([
+    value(['config', '--type=bool', '--get', 'commit.gpgsign'], cwd),
+    value(['config', '--get', 'gpg.format'], cwd),
+    value(['config', '--get', 'user.signingkey'], cwd),
+  ]);
+  return { every: every === 'true', format, key };
+}
