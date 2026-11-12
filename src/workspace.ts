@@ -120,6 +120,7 @@ export function parseOptions(argv: readonly string[]): Options {
     strict: { type: 'boolean' },
     'if-round': { type: 'boolean' },
     'require-measured': { type: 'boolean' },
+    'no-color': { type: 'boolean' },
     write: { type: 'boolean' },
     'git-hook': { type: 'boolean' },
     'block-on-failure': { type: 'boolean' },
@@ -164,10 +165,13 @@ export function parseOptions(argv: readonly string[]): Options {
   const answers = tokens.flatMap((token) => (token.kind === 'option' && (token.name === 'help' || token.name === 'version') ? [token] : []));
   const other = answers.find((token) => token.name !== answers[0]!.name);
   if (other !== undefined) throw new UnreadableLine(`${answers[0]!.rawName} is given beside ${other.rawName}, and one of the two answers would go unread; give one of them`, positionals);
-  const asked = values.format ?? 'pretty';
+  // `human` is what spec-guard and spec-graph call the same output
+  // (spec-core's ADR-0005, round 29's D8): read as `pretty`.
+  const named = values.format ?? 'pretty';
+  const asked = named === 'human' ? 'pretty' : named;
   const format = asked as Options['format'];
   const formats: readonly Options['format'][] = ['pretty', 'json', 'gitlab', 'sarif', 'github'];
-  if (!formats.includes(format)) throw new UnreadableLine(`--format must be pretty, json, gitlab, sarif or github, not "${format}"`, positionals);
+  if (!formats.includes(format)) throw new UnreadableLine(`--format must be pretty or human, json, gitlab, sarif or github, not "${format}"`, positionals);
   const command = positionals[0];
   // Only the commands whose findings have places print them for a forge.
   if (command !== undefined && command !== 'audit' && command !== 'premises' && format !== 'pretty' && format !== 'json') {

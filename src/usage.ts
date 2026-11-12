@@ -213,6 +213,14 @@ const SHAPE = literal({
 /** The options every command answers instead of running, which no shape lists. */
 const ANSWERS: readonly string[] = ['help', 'version'];
 
+/**
+ * The options every command reads and none lists: `--no-color`, which the
+ * family's contract has every tool take (spec-core's ADR-0005). spec-harness
+ * prints no colour, so it changes nothing, and refused it stopped a line
+ * written for the family with exit 2.
+ */
+const EVERY: readonly string[] = ['no-color'];
+
 /** Every command there is: the command line dispatches on these names and no other. */
 export type Command = keyof typeof SHAPE;
 
@@ -503,7 +511,7 @@ export function refusal(line: CommandLine, isDirectory: (path: string) => boolea
   if (shape === undefined || isClaudeHook(command, positionals[0])) return null;
   // What the line asks the command, beside the help or the version it may
   // ask for instead, which every command answers.
-  const asked = line.given.filter((option) => !ANSWERS.includes(option));
+  const asked = line.given.filter((option) => !ANSWERS.includes(option) && !EVERY.includes(option));
   const stray = asked.find((option) => !shape.options.includes(option));
   if (stray !== undefined) return `${command} does not take --${stray}; ${listed(shape.options)}`;
   // An option the command reads, beside one that leaves it unread:

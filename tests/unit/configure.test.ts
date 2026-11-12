@@ -1625,7 +1625,7 @@ describe("the lines of Claude Code's hook in its settings, and what doctor says 
         line: ['hook', 'claude', '--format', 'xml'],
         state: 'off',
         onFailure: null,
-        detail: `"hook claude --format xml" in .claude/settings.json: the hook's line cannot be read (--format must be pretty, json, gitlab, sarif or github, not "xml"), ${OFF}`,
+        detail: `"hook claude --format xml" in .claude/settings.json: the hook's line cannot be read (--format must be pretty or human, json, gitlab, sarif or github, not "xml"), ${OFF}`,
         ...EVERY,
         note: null,
         timeout: null,
