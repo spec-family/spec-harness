@@ -128,18 +128,30 @@ function archivedHere({ brief, ref, mergeBase }: Extract<ClosedRound, { readonly
 }
 
 /**
+ * Why `audit --if-round` audited nothing, for a script: nothing names a
+ * brief, or the branch archived the brief it names, which is `brief`. The
+ * line on stderr says it to a person, and was all that told the two apart
+ * where `brief` is `null` in both.
+ */
+interface Skipped {
+  readonly reason: 'no-brief-named' | 'archived-on-this-branch';
+  readonly brief: string | null;
+}
+
+/**
  * The answer where there is no round: the line, and in a format a script or
  * a forge reads, the document a run that found nothing prints, with the
- * line on stderr, where it reads none of it.
+ * line on stderr, where it reads none of it, and in JSON why nothing was
+ * audited.
  */
-function noRound(options: Options, io: CliIO, line: string): number {
+function noRound(options: Options, io: CliIO, line: string, skipped: Skipped): number {
   if (options.format === 'pretty') {
     io.stdout.write(`${line}\n`);
     return EXIT_OK;
   }
   io.stderr.write(`spec-harness: ${line}\n`);
   if (options.format === 'json') {
-    io.stdout.write(json('audit', { ok: true, brief: null, base: null, counts: { error: 0, warning: 0, note: 0 }, measured: null, findings: [], dependencies: [], installScripts: [] }));
+    io.stdout.write(json('audit', { ok: true, brief: null, base: null, counts: { error: 0, warning: 0, note: 0 }, measured: null, findings: [], dependencies: [], installScripts: [], skipped }));
   } else {
     io.stdout.write(formatFindings(options.format, [], { file: CONFIG_FILE, version: version(), summary: line }));
   }
@@ -152,7 +164,7 @@ export async function auditCommand(options: Options, io: CliIO): Promise<number>
   // (ADR-0004): a repository with no briefs, where spec-brief cannot list
   // any, has no round either. A name that names no brief spec-brief lists is
   // a name, and fails below as it did.
-  if (options.ifRound && options.positionals.length === 0 && namedId(workspace, options, io.env) === null) return noRound(options, io, NO_ROUND);
+  if (options.ifRound && options.positionals.length === 0 && namedId(workspace, options, io.env) === null) return noRound(options, io, NO_ROUND, { reason: 'no-brief-named', brief: null });
   const { active } = await namedBrief(workspace, options, io, options.positionals[0]);
   // A round's last commit archives its brief on its own branch, which still
   // names it, and spec-brief's archive checked the round as it did. Under
@@ -161,7 +173,7 @@ export async function auditCommand(options: Options, io: CliIO): Promise<number>
   // git cannot say of, fails as it did, with what git said.
   if (options.ifRound && active.kind === 'archived' && active.source === 'branch') {
     const closed = await closedRound(workspace, await resolveBase(workspace, options.base), active.brief);
-    if (closed.state === 'waiting-to-merge') return noRound(options, io, archivedHere(closed));
+    if (closed.state === 'waiting-to-merge') return noRound(options, io, archivedHere(closed), { reason: 'archived-on-this-branch', brief: closed.brief.id });
     throw new UsageError(`${describeActive(active).problem}; ${describeClosedRound(closed)}`);
   }
   const brief = briefNamed(active);

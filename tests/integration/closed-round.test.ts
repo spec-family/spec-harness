@@ -262,7 +262,7 @@ describe('audit --if-round on a closed round\'s branch', () => {
     expect(await cli(['audit', '--if-round'], repo.root)).toEqual({ code: 0, stdout: `${line}\n`, stderr: '' });
     const json = await cli(['audit', '--if-round', '--format', 'json'], repo.root);
     expect({ code: json.code, stderr: json.stderr }).toEqual({ code: 0, stderr: `spec-harness: ${line}\n` });
-    expect(parsed(json)).toMatchObject({ ok: true, brief: null, counts: { error: 0, warning: 0, note: 0 }, findings: [] });
+    expect(parsed(json)).toMatchObject({ ok: true, brief: null, counts: { error: 0, warning: 0, note: 0 }, findings: [], skipped: { reason: 'archived-on-this-branch', brief: '020' } });
     expect(await cli(['audit', '--if-round', '--format', 'github'], repo.root)).toEqual({ code: 0, stdout: '', stderr: `spec-harness: ${line}\n` });
     // As CI names the branch, on a detached head.
     const head = repo.git('rev-parse', 'HEAD');

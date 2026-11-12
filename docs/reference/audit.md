@@ -105,7 +105,7 @@ A job that runs on every branch audits the round on a brief's branch, and on any
 - The branch that archived its brief is no round to audit either. A round archives its brief on its own branch before the branch merges, and the branch still names the brief, which spec-brief then lists as archived; `spec-brief archive` checked the round as it archived it. Under `--if-round`, where the branch names a brief spec-brief has archived and git says this branch archived it, as [`doctor`](doctor.md) tells it, the archived file in HEAD and not at the merge base of the base and HEAD, `audit` says so in one line and exits 0: `brief 020 was archived on this branch, which waits to merge: briefs/archive/020_compute.md is in HEAD and not at the merge base with main, 8835800a03b3, and spec-brief archive checked the round as it archived it, so there is no round to audit, and --if-round passes the run`. So the job checks out the whole history, with the base's branch in it, as one that runs `doctor` does.
 - A brief that is named and cannot be read fails as it does without the flag, exit 2: one spec-brief does not list; one spec-brief has archived that the flag, `SPEC_BRIEF` or the argument names; and spec-brief missing or unable to list the briefs where a brief is named. So does the branch's archived brief where the file is at the merge base already, a closed round's branch used again, and where git cannot say, as in a history that is shallow or where the base names no commit; the line then adds what `doctor` says of it: `the branch names brief 020, which is archived; a closed round writes nothing; whether brief 020 was archived on this branch, which waits to merge, cannot be told: the history is shallow, ...`.
 - A round that is named is audited as it is without the flag.
-- Where nothing names a brief, the line is `no brief is named by --brief, SPEC_BRIEF or the branch, so there is no round to audit, and --if-round passes the run`. Under `pretty` the line, either one, is the output. The other formats print what a run that found nothing prints, and say the line on stderr, where a script or a forge reads none of it: `--format json` has `ok: true`, `brief`, `base` and `measured` `null`, every count 0 and no finding, dependency or install script; `gitlab` an empty report; `sarif` a run with no result, the line as its note; `github` nothing.
+- Where nothing names a brief, the line is `no brief is named by --brief, SPEC_BRIEF or the branch, so there is no round to audit, and --if-round passes the run`. Under `pretty` the line, either one, is the output. The other formats print what a run that found nothing prints, and say the line on stderr, where a script or a forge reads none of it: `--format json` has `ok: true`, `brief`, `base` and `measured` `null`, every count 0 and no finding, dependency or install script, and `skipped`, why nothing was audited: `{ "reason": "no-brief-named", "brief": null }`, or `{ "reason": "archived-on-this-branch", "brief": "020" }` on the branch that archived brief 020. A run that audits a round has no `skipped`; `gitlab` an empty report; `sarif` a run with no result, the line as its note; `github` nothing.
 
 On GitHub Actions, as a step of the [README's job](../../README.md#in-ci), which fetches the base with its history. `--base` names the branch the pull request merges into, or the repository's default branch on a push, as the forge has it, and `--require-measured` fails a run that could not measure the round ([What the round is measured by](#what-the-round-is-measured-by)); the branch name goes through `env`, never into the line itself, where a name could run as a command:
 
@@ -115,6 +115,18 @@ On GitHub Actions, as a step of the [README's job](../../README.md#in-ci), which
           BASE: origin/${{ github.base_ref || github.event.repository.default_branch }}
         run: npx --no-install @spec-family/spec-harness audit --if-round --require-measured --base "$BASE" --format github
 ```
+
+On Azure Pipelines and Jenkins, which the harness reads no branch variable of yet ([Which brief](rounds.md#which-brief)), set `SPEC_BRIEF` from the brief's branch in the step, so that a round's own run names its brief and any other names none. A branch named like `brief/012-rotate` under the default templates, in a bash step on Azure Pipelines:
+
+```yaml
+  - bash: |
+      branch="${SYSTEM_PULLREQUEST_SOURCEBRANCH:-$BUILD_SOURCEBRANCH}"
+      branch="${branch#refs/heads/}"
+      case "$branch" in brief/*|*/brief/*|brief-*|*/brief-*) export SPEC_BRIEF="$(printf '%s' "${branch##*brief[/-]}" | grep -oE '^[A-Za-z0-9]+')" ;; esac
+      npx --no-install @spec-family/spec-harness audit --if-round --format sarif > spec-harness.sarif
+```
+
+On Jenkins, in a multibranch pipeline, the branch is `CHANGE_BRANCH` for a pull request and `BRANCH_NAME` otherwise, read the same way in an `sh` step. Where `SPEC_BRIEF` is set and the branch name another brief, `SPEC_BRIEF` wins, so set it only from the branch.
 
 In GitLab CI:
 
