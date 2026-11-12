@@ -20,7 +20,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -518,64 +518,96 @@ describe("the order a mutant's test files run in", () => {
   });
 
   /**
+   * A sandbox of two test files, in a folder of its own and where both
+   * suites look for tests: `short`, whose test takes 50 ms, and `long`, whose
+   * tests take 200, none and none, the second failing.
+   */
+  const sandboxes: string[] = [];
+  afterEach(() => {
+    for (const root of sandboxes.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+  function sandbox(): string {
+    const root = mkdtempSync(join(tmpdir(), PREFIX));
+    sandboxes.push(root);
+    mkdirSync(join(root, 'tests/unit'), { recursive: true });
+    const pause = (ms: number) => `await new Promise((end) => setTimeout(end, ${ms}));`;
+    writeFileSync(join(root, 'tests/unit/short.test.ts'), `test('short holds', async () => { ${pause(50)} });`);
+    writeFileSync(join(root, 'tests/unit/long.test.ts'), `test('long holds', async () => { ${pause(200)} }); test('long breaks', () => { throw new Error('broken'); }); test('long quick', () => {});`);
+    return root;
+  }
+
+  /**
    * Stryker's vitest runner as it runs one mutant after another, in a process
-   * of its own: a vitest made from a sweep's configuration with the options
-   * the runner gives it, and runs of both files narrowed by a test name
-   * pattern, each after clearing the files of the run before. Of each run,
-   * the order vitest ran the two files in, as the sequencer it resolved gave
-   * that order inside the run, and whether vitest's cache had `long` failed
-   * after it: `short`, whose test takes 50 ms, and `long`, whose tests take
-   * 200, none and none, the second failing, both where both suites look for
-   * tests.
+   * of its own run in the sandbox, as Stryker runs a worker: a vitest made
+   * from a sweep's configuration with the options the runner gives it, and
+   * runs of both files narrowed by a test name pattern, each after clearing
+   * the files of the run before. Of each run, the order vitest ran the two
+   * files in, as the sequencer it resolved gave that order inside the run,
+   * and whether vitest's cache had `long` failed after it. `worker` names the
+   * process as Stryker names its workers; `others` is a record another worker
+   * writes to the shared file after the run of that index, by the files'
+   * names.
    */
   type Run = { order: string[]; failed: boolean };
-  function asStrykerRuns(config: string, patterns: readonly string[]): Run[] {
-    const root = mkdtempSync(join(tmpdir(), PREFIX));
-    try {
-      mkdirSync(join(root, 'tests/unit'), { recursive: true });
-      const pause = (ms: number) => `await new Promise((end) => setTimeout(end, ${ms}));`;
-      writeFileSync(join(root, 'tests/unit/short.test.ts'), `test('short holds', async () => { ${pause(50)} });`);
-      writeFileSync(join(root, 'tests/unit/long.test.ts'), `test('long holds', async () => { ${pause(200)} }); test('long breaks', () => { throw new Error('broken'); }); test('long quick', () => {});`);
-      const script = `
-        import { createVitest } from 'vitest/node';
-        const ctx = await createVitest('test', {
-          root: ${JSON.stringify(root)},
-          config: ${JSON.stringify(join(ROOT, config))},
-          globals: true, watch: false, pool: 'forks', maxWorkers: 1, maxConcurrency: 1, bail: 1, coverage: { enabled: false },
-        });
-        const name = (file) => file.moduleId.slice(file.moduleId.lastIndexOf('/') + 1, -'.test.ts'.length);
-        const orders = [];
-        const { sort } = ctx.config.sequence.sequencer.prototype;
-        ctx.config.sequence.sequencer.prototype.sort = async function (files) {
-          const sorted = await sort.call(this, files);
-          orders.push(sorted.map(name));
-          return sorted;
-        };
-        const files = ['short', 'long'].map((file) => ctx.config.root + '/tests/unit/' + file + '.test.ts');
-        const long = ctx.getRootProject().createSpecification(files[1]);
-        const results = [];
-        for (const pattern of ${JSON.stringify(patterns)}) {
-          ctx.state.filesMap.clear();
-          for (const project of ctx.projects) project.config.testNamePattern = new RegExp(pattern);
-          await ctx.start(files);
-          results.push({ order: orders.at(-1), failed: ctx.cache.getTestSpecificationResult(long).failed });
+  type Others = { after: number; record: Record<string, boolean> };
+  function asStrykerRuns(config: string, root: string, patterns: readonly string[], { worker, others }: { worker?: string; others?: Others } = {}): Run[] {
+    const script = `
+      import { writeFileSync } from 'node:fs';
+      import { createVitest } from 'vitest/node';
+      process.chdir(${JSON.stringify(root)});
+      const ctx = await createVitest('test', {
+        root: ${JSON.stringify(root)},
+        config: ${JSON.stringify(join(ROOT, config))},
+        globals: true, watch: false, pool: 'forks', maxWorkers: 1, maxConcurrency: 1, bail: 1, coverage: { enabled: false },
+      });
+      const name = (file) => file.moduleId.slice(file.moduleId.lastIndexOf('/') + 1, -'.test.ts'.length);
+      const orders = [];
+      const { sort } = ctx.config.sequence.sequencer.prototype;
+      ctx.config.sequence.sequencer.prototype.sort = async function (files) {
+        const sorted = await sort.call(this, files);
+        orders.push(sorted.map(name));
+        return sorted;
+      };
+      const id = (file) => ctx.config.root + '/tests/unit/' + file + '.test.ts';
+      const files = ['short', 'long'].map(id);
+      const long = ctx.getRootProject().createSpecification(files[1]);
+      const others = ${JSON.stringify(others ?? null)};
+      const results = [];
+      for (const [index, pattern] of ${JSON.stringify(patterns)}.entries()) {
+        ctx.state.filesMap.clear();
+        for (const project of ctx.projects) project.config.testNamePattern = new RegExp(pattern);
+        await ctx.start(files);
+        results.push({ order: orders.at(-1), failed: ctx.cache.getTestSpecificationResult(long).failed });
+        if (others?.after === index) {
+          const record = Object.fromEntries(Object.entries(others.record).map(([file, failed]) => [id(file), failed]));
+          writeFileSync(${JSON.stringify(join(root, '.vitest-order-record.json'))}, JSON.stringify(record));
         }
-        await ctx.close();
-        process.exitCode = 0;
-        process.stdout.write('@runs@' + JSON.stringify(results));
-      `;
-      const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-      return JSON.parse(out.slice(out.lastIndexOf('@runs@') + '@runs@'.length)) as Run[];
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+      }
+      await ctx.close();
+      process.exitCode = 0;
+      process.stdout.write('@runs@' + JSON.stringify(results));
+    `;
+    const env = { ...process.env };
+    delete env['STRYKER_MUTATOR_WORKER'];
+    if (worker !== undefined) env['STRYKER_MUTATOR_WORKER'] = worker;
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { cwd: ROOT, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return JSON.parse(out.slice(out.lastIndexOf('@runs@') + '@runs@'.length)) as Run[];
+  }
+  const orders = (runs: Run[]) => runs.map(({ order }) => order);
+
+  /** The record the sandbox's shared file holds, by the files' names, or none. */
+  function held(root: string): Record<string, boolean> | undefined {
+    const file = join(root, '.vitest-order-record.json');
+    if (!existsSync(file)) return undefined;
+    const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, boolean>;
+    return Object.fromEntries(Object.entries(record).map(([id, failed]) => [id.slice(id.lastIndexOf('/') + 1, -'.test.ts'.length), failed]));
   }
 
   // Each sweep's: the core sweep's suite takes the order and its record from
   // the full sweep's, and each is resolved from its own file, as Stryker's
   // runner resolves it.
   it.each(['vitest.mutation.config.ts', 'vitest.core.config.ts'])("runs first, inside the next run, the file that failed in the run before, then the quicker whole file, in runs narrowed as Stryker narrows them, where vitest 5's cache keeps an older failure (%s)", (config) => {
-    const runs = asStrykerRuns(config, ['holds$', 'short holds$|long breaks$', 'holds$', 'short holds$|long quick$', 'holds$']);
+    const runs = asStrykerRuns(config, sandbox(), ['holds$', 'short holds$|long breaks$', 'holds$', 'short holds$|long quick$', 'holds$']);
     // The smaller first, as neither has a time; then the quicker; then the
     // one that failed in the run before; then, as it passed there, the
     // quicker again; and after a run of its one quick test, still `short`, by
@@ -596,6 +628,95 @@ describe("the order a mutant's test files run in", () => {
     // does not, vitest forgets a failure as 4 did, and spec-core's ADR-0008
     // says what a sweep must show before the record goes.
     expect(runs.map(({ failed }) => failed)).toEqual([false, true, true, true, true]);
+  });
+
+  it.each(['vitest.mutation.config.ts', 'vitest.core.config.ts'])('begins a worker Stryker starts with the record the workers before it left in the sandbox, and a process that is not one of its workers with none, writing none (%s)', (config) => {
+    const root = sandbox();
+    // The first worker of a sweep: the smaller first, as neither has a time,
+    // then the quicker, which passes, and `long`, which fails. It leaves its
+    // record in the sandbox, and vitest leaves the times in its cache.
+    expect(orders(asStrykerRuns(config, root, ['holds$', 'short holds$|long breaks$'], { worker: '1' }))).toEqual([
+      ['short', 'long'],
+      ['short', 'long'],
+    ]);
+    expect(held(root)).toEqual({ short: false, long: true });
+
+    // A process that is not a worker reads no record: the quicker first, by
+    // the times vitest's cache kept, which is how a worker Stryker started
+    // after a timeout began with the record in its memory alone. It leaves
+    // the file as it found it.
+    expect(orders(asStrykerRuns(config, root, ['holds$']))).toEqual([['short', 'long']]);
+    expect(held(root)).toEqual({ short: false, long: true });
+
+    // A worker started in its place begins with `long` failed, as the first
+    // left it, and as vitest 4's cache file had it.
+    expect(orders(asStrykerRuns(config, root, ['holds$'], { worker: '2' }))).toEqual([['long', 'short']]);
+    expect(held(root)).toEqual({ short: false, long: false });
+  });
+
+  it("reads the sandbox's record once, when the worker starts, and from then on goes by the worker's own runs, writing its record whole after each", () => {
+    const root = sandbox();
+    const config = 'vitest.mutation.config.ts';
+    asStrykerRuns(config, root, ['holds$', 'short holds$|long breaks$'], { worker: '1' });
+    // The second worker begins with `long` failed and passes it. Another
+    // worker then writes `long` failed again, and this one runs the quicker
+    // first, by its own run: a record read back before each sort would be
+    // vitest 5's cache again, a file failed in every worker once it failed in
+    // one (spec-core's ADR-0008, amended 2026-11-12).
+    const runs = asStrykerRuns(config, root, ['holds$', 'holds$'], { worker: '2', others: { after: 0, record: { short: false, long: true } } });
+    expect(orders(runs)).toEqual([
+      ['long', 'short'],
+      ['short', 'long'],
+    ]);
+    // And over what the other wrote, its own record, whole.
+    expect(held(root)).toEqual({ short: false, long: false });
+  });
+});
+
+describe("the order's record, shared through a file", () => {
+  let work = '';
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), PREFIX));
+  });
+  afterEach(() => rmSync(work, { recursive: true, force: true }));
+
+  it("is kept in the folder of one of Stryker's workers, and nowhere for any other process", async () => {
+    const { recordFile, RECORD_FILE } = await mutationSuite();
+    expect(recordFile({ STRYKER_MUTATOR_WORKER: '3' }, work)).toBe(join(work, RECORD_FILE));
+    expect(recordFile({ STRYKER_MUTATOR_WORKER: '0' }, work)).toBe(join(work, RECORD_FILE));
+    expect(recordFile({}, work)).toBeUndefined();
+    expect(recordFile({ STRYKER_MUTATOR_WORKER: undefined, MUTATION_SHARD: '2' }, work)).toBeUndefined();
+  });
+
+  it('reads back what was written, and writes it whole over what was there, leaving no file of its own beside it', async () => {
+    const { readRecord, writeRecord } = await mutationSuite();
+    const file = join(work, 'record.json');
+    writeRecord(file, new Map([['/s/tests/a.test.ts', true], ['/s/tests/b.test.ts', false]]));
+    expect(readRecord(file)).toEqual(new Map([['/s/tests/a.test.ts', true], ['/s/tests/b.test.ts', false]]));
+    writeRecord(file, new Map([['/s/tests/b.test.ts', true]]));
+    expect(readRecord(file)).toEqual(new Map([['/s/tests/b.test.ts', true]]));
+    expect(readdirSync(work)).toEqual(['record.json']);
+  });
+
+  it('reads nothing from a file that is missing, unreadable or not a record, and keeps only the verdicts that are true or false', async () => {
+    const { readRecord } = await mutationSuite();
+    const file = join(work, 'record.json');
+    expect(readRecord(file)).toEqual(new Map());
+    for (const text of ['', '{"a": tr', 'null', '[["a", true]]', '"a"', '7']) {
+      writeFileSync(file, text);
+      expect(readRecord(file), text).toEqual(new Map());
+    }
+    writeFileSync(file, JSON.stringify({ a: true, b: false, c: 'true', d: 1, e: null, f: { failed: true } }));
+    expect(readRecord(file)).toEqual(new Map([['a', true], ['b', false]]));
+    expect(readRecord(work)).toEqual(new Map());
+  });
+
+  it('writes nothing where it cannot, and does not stop the run for it', async () => {
+    const { readRecord, writeRecord } = await mutationSuite();
+    const file = join(work, 'gone', 'record.json');
+    expect(() => writeRecord(file, new Map([['a', true]]))).not.toThrow();
+    expect(readRecord(file)).toEqual(new Map());
+    expect(readdirSync(work)).toEqual([]);
   });
 });
 

@@ -1385,3 +1385,40 @@ count is at or past vitest 4's, the static mutants' most of all: in
 vitest's order a static mutant ran the longest unit files first. The job
 took 13m37s, within main's 9m23s to 14m22s, which is what one runner
 differs from another by.
+
+*Amended 2026-11-12.* **The order's record, shared between a sweep's
+workers.** The record of the amendment before was kept in the worker's
+memory, so a worker Stryker starts in place of one that timed out began
+with none, where on vitest 4 it read the cache file every worker rewrote
+after each run. Static mutants run last in each shard, after the timeouts,
+so mostly on such workers. spec-core found it in an experiment and took
+the fix first (its
+[ADR-0007](https://github.com/spec-family/spec-core/blob/main/docs/adr/0007-verification.md),
+the entry of 2026-11-12, and
+[ADR-0008](https://github.com/spec-family/spec-core/blob/main/docs/adr/0008-toolchain.md),
+amended 2026-11-12): its static mutants' tests before their kills came to
+23,734 to 29,259 in main's seven sweeps with the record in memory alone,
+against 11,731 to 17,936 on vitest 4, and with the record shared 17,664 in
+its experiment and 17,621 in the sweep of its pull request, spec-core#77.
+
+`vitest.mutation.config.ts` shares the record as spec-core's does: where
+the process is one of Stryker's workers (`STRYKER_MUTATOR_WORKER`), through
+`.vitest-order-record.json` in the folder it runs in, the sweep's sandbox,
+read once when the worker loads the configuration and written whole after
+each run, through a file of the process's own renamed over it. A process
+that is not a worker reads and writes none. The core sweep's suite takes
+the record from there, and each sweep has a sandbox of its own, so each
+shares its own. No workflow changes. `tests/mutation-shards.test.ts` holds
+it for both suites as spec-core's test does: vitest made as Stryker's
+runner makes it, in processes of their own in a sandbox of two files, and
+the functions that name, read and write the file as a library.
+
+Before it, main's last two full sweeps, of ac40ca6 and b32c85b (runs
+43076735805 and 42970849086), read 98.01% over 12,686 and 98.00% over
+12,601, 252 undetected, and 164,611 and 174,093 tests before the kills of
+their static mutants, 149 and 163 of them after more than 200 tests; their
+eight shards took 10.3 to 44.7 minutes as jobs in the first. The core
+sweep of 377ee47 and ac40ca6 read 98.69% over 7,334 and 35,347 and 34,517
+tests before the kills of its 495 static ones. The shards are levelled
+again on the sweeps with the record shared, by the amendment that follows
+this one.

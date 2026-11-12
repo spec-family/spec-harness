@@ -108,6 +108,9 @@ narrows until a run of the whole file passes, so the full sweep's order
 keeps its own record of the file that failed when the worker last ran it,
 `lastRun` in `vitest.mutation.config.ts`, and the core sweep's suite takes
 the order and the record from there, where it had vitest's longest-first.
+A sweep's workers share the record through a file in Stryker's sandbox,
+read once when a worker starts, so one started after a timeout begins with
+what the others left, as on vitest 4.
 The reporter has no `onInit`: vitest 5 calls that at the start of every
 run, which would empty the record before each sort, and
 `tests/mutation-shards.test.ts` fails with one put back, or with either

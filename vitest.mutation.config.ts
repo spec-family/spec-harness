@@ -1,4 +1,5 @@
-import { statSync } from 'node:fs';
+import { readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { defineConfig } from 'vitest/config';
 import { BaseSequencer, type Reporter, type TestModule, type TestSpecification } from 'vitest/node';
@@ -18,8 +19,21 @@ import { BaseSequencer, type Reporter, type TestModule, type TestSpecification }
  * that passed or failed in a run has that verdict until a run runs it again,
  * and a file the run skipped or did not reach keeps the one it had. Vitest
  * calls the sequencer and the reporters in the one process that drives the
- * worker, so the record lives in that process's memory, with no file to name
- * or clean up, and dies with it.
+ * worker, so the record lives in that process's memory.
+ *
+ * And the workers of one sweep share it, as they shared vitest 4's cache: a
+ * worker reads the file `recordFile` names once, when it loads this file, and
+ * writes its record there whole after each run. Vitest 4 read its cache file
+ * when a process started, and every worker rewrote it after each run, so a
+ * worker Stryker starts in place of one that timed out began with what the
+ * last writer held; a record kept in memory alone begins empty there. Static
+ * mutants run last in each shard, after the timeouts, so mostly on such
+ * workers, and in spec-core they ran half as many tests again before their
+ * kills with the record in memory alone (its ADR-0007, 2026-11-12). A worker
+ * reads the file once and no more: a record read back before each sort would
+ * be vitest 5's cache again, a file failed for every worker once it failed in
+ * one. The core sweep's suite takes the record from here, and shares it the
+ * same way: a sandbox is one sweep's.
  *
  * The times stay the cache's, on vitest 5 the dry run's, of each whole file,
  * where vitest 4 took each run's, narrowed or stopped. A record of each run's
@@ -28,6 +42,58 @@ import { BaseSequencer, type Reporter, type TestModule, type TestSpecification }
  */
 const failedLast = new Map<string, boolean>();
 
+/** The file the workers of a sweep share the record through, in the folder each runs in. */
+export const RECORD_FILE = '.vitest-order-record.json';
+
+/**
+ * Where a process keeps the record beside its memory: in the folder it runs
+ * in where it is one of Stryker's workers, and nowhere otherwise. Stryker
+ * names each worker in its environment (`STRYKER_MUTATOR_WORKER`) and runs
+ * it in the sweep's sandbox, where its vitest runner writes its own setup
+ * file too. So the file is one sweep's, whose workers name the test files by
+ * the same paths, and it goes with the sandbox. A process that is not a
+ * worker, `npm test` or a test that loads this file, reads and writes none.
+ */
+export function recordFile(env: Readonly<Record<string, string | undefined>>, cwd: string): string | undefined {
+  return env['STRYKER_MUTATOR_WORKER'] === undefined ? undefined : join(cwd, RECORD_FILE);
+}
+
+/**
+ * The record a file holds: its entries whose verdict is `true` or `false`,
+ * and none from a file that is missing, unreadable or not an object. A
+ * worker that finds nothing begins as the first workers of a sweep do.
+ */
+export function readRecord(file: string): Map<string, boolean> {
+  try {
+    const held: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (typeof held !== 'object' || held === null || Array.isArray(held)) return new Map();
+    return new Map(Object.entries(held).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'));
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Writes a record whole, to a file of this process's own that is then
+ * renamed over the shared one, so a worker reads one writer's record and
+ * never half of one. A write that fails leaves the shared file as it was,
+ * and a file of its own that a rename left goes with the sandbox: the order
+ * reads the record in memory, and the file is only what a worker started
+ * later begins with.
+ */
+export function writeRecord(file: string, record: ReadonlyMap<string, boolean>): void {
+  const own = `${file}.${process.pid}`;
+  try {
+    writeFileSync(own, JSON.stringify(Object.fromEntries(record)));
+    renameSync(own, file);
+  } catch {
+    // The next run writes again.
+  }
+}
+
+const shared = recordFile(process.env, process.cwd());
+if (shared !== undefined) for (const [id, failed] of readRecord(shared)) failedLast.set(id, failed);
+
 /** The reporter that keeps the record above, named in the suite below. */
 export const lastRun = {
   // No `onInit`: vitest 5 calls it at the start of every run, which would
@@ -35,6 +101,10 @@ export const lastRun = {
   onTestModuleEnd(module: TestModule): void {
     const state = module.state();
     if (state === 'passed' || state === 'failed') failedLast.set(module.moduleId, state === 'failed');
+  },
+  // After each run, narrowed, stopped or whole, as vitest 4 wrote its cache.
+  onTestRunEnd(): void {
+    if (shared !== undefined) writeRecord(shared, failedLast);
   },
 } satisfies Reporter;
 

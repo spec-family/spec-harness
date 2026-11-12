@@ -139,6 +139,18 @@ cannot turn a run red. The family's policy is
   spec-brief and spec-graph read theirs. Every command refused it, exit 2,
   with a character the message did not show, and the hook held every write.
 
+### Changed
+
+- **A worker of either mutation sweep that Stryker starts after a timeout
+  begins with the order's record the others left, as on vitest 4.** The
+  record of each test file's last verdict was kept in each worker's memory,
+  so a worker started in place of one that timed out began with none.
+  Static mutants run last, mostly on such workers. The workers of one sweep
+  now share the record through a file in Stryker's sandbox, read once when
+  a worker starts and written whole after each run, as spec-core's do
+  (ADR-0010, amended 2026-11-12). Development tooling only: nothing
+  spec-harness decides or reports changed. Upgrading: nothing to do.
+
 ## 0.25.0
 
 `audit --if-round` passes a run where no brief is named, or where the
