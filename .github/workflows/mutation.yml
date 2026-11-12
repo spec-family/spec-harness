@@ -133,13 +133,13 @@ jobs:
     # The image the hosted sweeps in ADR-0010 were measured on. Another image
     # is another measurement: spec-core's ADR-0008 says what moving takes.
     runs-on: ubuntu-24.04
-    # Headroom for a bad runner, not a budget: by the five sweeps the table in
-    # scripts/mutation-shards.mjs was levelled on, a shard's files take 12 to
-    # 14 minutes and its job about three more (ADR-0010, amended 2026-10-14).
+    # Headroom for a bad runner, not a budget: by the six sweeps the table in
+    # scripts/mutation-shards.mjs was levelled on, a shard's files take 17 to
+    # 29 minutes and its job about five more (ADR-0010, amended 2026-11-12).
     # Stryker writes a shard's report only when the shard ends, so a shard cut
     # short measures nothing and the merge refuses the sweep; Re-run failed
     # jobs runs that shard again, and the merge takes the other shards'
-    # reports from the first attempt. A shard that keeps passing 22, five
+    # reports from the first attempt. A shard that keeps passing 39, five
     # minutes more than the table has its longest, means the table needs
     # re-measuring, or that the suite has grown, which every static mutant
     # that survives runs whole: not this number raising.
@@ -150,7 +150,7 @@ jobs:
       fail-fast: false
       matrix:
         # One entry per shard in scripts/mutation-shards.mjs; a test checks.
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     env:
       MUTATION_SHARD: ${{ matrix.shard }}
     steps:

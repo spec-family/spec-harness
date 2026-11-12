@@ -14,7 +14,7 @@ and the module layout are in [`CLAUDE.md`](CLAUDE.md); the decisions and what
 they cost are in [`docs/adr/`](docs/adr/README.md). Mutation testing runs in
 GitHub Actions, not on a workstation: the core sweep is a CI job on every
 change, and the full sweep runs for a change to what only it reaches
-(below), weekly and on request (Actions, Mutation, Run workflow), in eight
+(below), weekly and on request (Actions, Mutation, Run workflow), in nine
 parallel shards merged into one score.
 
 npm 10, 11 and 12 install the same tree from the lockfile and run the same
@@ -36,12 +36,12 @@ verified by hash. It is never edited here.
 The core sweep mutates the pure modules, the list in
 `stryker.core.config.mjs`. The command line, `init`, the server, `round.ts`,
 git and the siblings are mutated by the full sweep alone, and a pull request
-that changes one of them, or what the sweep is made of, runs it: nine more
-checks, and about twenty minutes where CI takes nine. The files are the
-paths in `.github/workflows/mutation.yml`. A module added to `src/` goes into
-the core sweep's list or into those paths, and `npm test` fails until it is
-in one. Every push to such a pull request runs the sweep again and ends the
-one before it.
+that changes one of them, or what the sweep is made of, runs it: ten more
+checks, and about thirty-five minutes where CI takes fourteen. The files are
+the paths in `.github/workflows/mutation.yml`. A module added to `src/` goes
+into the core sweep's list or into those paths, and `npm test` fails until it
+is in one. Every push to such a pull request runs the sweep again and ends
+the one before it.
 
 The check `mutation (full)` ends with a summary, *Undetected mutants new
 against main*: the mutants of the pull request, merged into main, that no

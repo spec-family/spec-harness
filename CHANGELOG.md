@@ -171,6 +171,14 @@ cannot turn a run red. The family's policy is
   scores are main's. Development tooling only: nothing
   spec-harness decides or reports changed. Upgrading: nothing to do.
 
+- **The full mutation sweep runs in nine shards, levelled on six sweeps of
+  three sources.** The sweep's files had come to 209 to 227 minutes from
+  104 to 111, and one shard took up to 57 of its job's 60. Each listed
+  shard is now built round one of the eight files of 10 to 29 minutes, and
+  the last keeps the small ones (ADR-0010, amended again 2026-11-12).
+  Development tooling only: nothing spec-harness decides or reports
+  changed. Upgrading: nothing to do.
+
 ## 0.25.0
 
 `audit --if-round` passes a run where no brief is named, or where the
