@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { OutOfScope, ProtectHarness } from '../../src/config.js';
-import { decide, decideWritten, DOTS_MEND, HARNESS_FILES, harnessFile, heldBy, heldForDots, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
+import { decide, decideWritten, DOTS_MEND, HARNESS_FILES, harnessFile, heldBy, heldForDots, heldForShare, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
 import type { BriefRow } from '../../src/types.js';
 import { row } from './helpers.js';
 
@@ -406,6 +406,17 @@ describe('a path held for what names the brief', () => {
       message:
         '/elsewhere/sub/../notes.md has a .. in it and reads as a file outside every work tree of the repository, but a link before the .. can lead back into one, so it is held as a write in the repository is while the branch names brief 999, and spec-brief knows no such brief',
       hint: DOTS_MEND,
+    });
+  });
+
+  it('is refused where it is a share on this machine that names no drive, in words that say why and how to write it', () => {
+    expect(heldForShare('\\\\localhost\\work\\src\\a.ts')).toEqual({
+      path: '\\\\localhost\\work\\src\\a.ts',
+      verdict: 'deny',
+      reason: 'held',
+      because: [],
+      message: '\\\\localhost\\work\\src\\a.ts names a share on this machine, which can be the repository by another name, and the guard cannot tell which directory it is',
+      hint: "write the path as a local one, the drive and the directories, or through the drive's own share, such as C$",
     });
   });
 });

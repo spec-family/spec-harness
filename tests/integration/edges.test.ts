@@ -56,12 +56,17 @@ describe('a path through a share on this machine (ADR-0005)', () => {
       ['//localhost/C$/Repos/x', 'C:/Repos/x'],
       ['\\\\localhost\\C$', 'C:\\'],
       ['\\\\localhost\\\\C$\\x', 'C:\\x'],
+      ['\\\\127.10.200.1\\C$\\x', 'C:\\x'],
     ] as const) {
       expect(throughShare(path, host), path).toEqual({ local });
     }
-    for (const path of ['\\\\localhost\\work\\x', '\\\\127.0.0.1\\C\\x', '\\\\localhost\\CD$\\x', '\\\\?\\UNC\\desk-1\\repo']) expect(throughShare(path, host), path).toBe('share');
+    for (const path of ['\\\\localhost\\work\\x', '\\\\127.0.0.1\\C\\x', '\\\\localhost\\CD$\\x', '\\\\?\\UNC\\desk-1\\repo', '\\\\localhost\\C$x\\y']) expect(throughShare(path, host), path).toBe('share');
     for (const path of ['\\\\elsewhere\\C$\\x', '\\\\128.0.0.1\\C$\\x', '\\\\?\\C:\\x', '\\\\.\\C:\\x', 'C:\\x', '/home/x', 'a\\b', '\\\\localhost', '\\\\desk-10\\C$\\x']) {
       expect(throughShare(path, host), path).toBeNull();
+    }
+    // A name only beginning or only ending as a loopback one names another machine, and a UNC path is the whole path.
+    for (const path of ['\\\\notlocalhost\\C$\\x', '\\\\localhost.example\\C$\\x', '\\\\1127.0.0.1\\C$\\x', 'x\\\\localhost\\C$\\x', '\\\\localhost\\C$\\a\nb']) {
+      expect(throughShare(path, host), JSON.stringify(path)).toBeNull();
     }
   });
 

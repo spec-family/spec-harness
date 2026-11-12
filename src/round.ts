@@ -203,7 +203,10 @@ export async function checkPaths(
   // two files: the last a path reaches is the one it is written to, or the
   // one it reads as where that is all it reaches (ADR-0005).
   // A share on this machine is read as the drive it names, and one that
-  // names no drive is held: it can be the repository by another name.
+  // names no drive is held: it can be the repository by another name. On
+  // Linux, where the sweep runs, every path is as given and none is held,
+  // so the mutants of the two tests of null are equivalent there; the
+  // suite's Windows leg holds them.
   const resolved = given.map((path) => {
     const local = localSpelling(path);
     const read = local === null ? null : { path: repositoryPath(local, workspace.root, cwd), written: repositoryPath(reachedBy(local, cwd).at(-1)!, workspace.root, cwd) };
