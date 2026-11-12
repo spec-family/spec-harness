@@ -50,6 +50,12 @@ export interface CliIO {
   readonly stdin?: () => Promise<string>;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
+  /**
+   * The platform a path is read as, where a share on this machine is a
+   * drive (fs.ts, localSpelling): the process's where none is given. A
+   * test reads a path as Windows does on any platform by naming it.
+   */
+  readonly platform?: NodeJS.Platform | undefined;
 }
 
 export function version(): string {
@@ -207,6 +213,8 @@ export interface Workspace {
   /** The CI variable that named the branch, on a detached head; absent when git named it. */
   readonly branchSource?: string | undefined;
   readonly cwd: string;
+  /** The platform its paths are read as, as the command line's input names it; the process's where absent. */
+  readonly platform?: NodeJS.Platform | undefined;
 }
 
 /**
@@ -294,7 +302,7 @@ export async function openFound(found: FoundTree, io: CliIO, installs: Installs 
   // out, asks the forge which branch the run builds.
   const ci = checkedOut === null ? ciBranch(io.env) : null;
   const named = ci === null ? { branch: checkedOut } : { branch: ci.branch, branchSource: ci.source };
-  return { root, commonDir, config, siblings: createSiblings(root, config, installs(root, commonDir)), ...named, cwd: io.cwd };
+  return { root, commonDir, config, siblings: createSiblings(root, config, installs(root, commonDir)), ...named, cwd: io.cwd, platform: io.platform };
 }
 
 /**

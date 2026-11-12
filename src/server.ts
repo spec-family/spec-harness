@@ -399,10 +399,8 @@ function served(open: () => Promise<Workspace>, cwd: string, env: CliIO['env'], 
         const decisions: Decision[] = [];
         // A drive's share on this machine is decided as the drive, before
         // anything reads where the path is (fs.ts, localSpelling); one
-        // through another share is held where it is decided. On Linux, where
-        // the sweep runs, every path is as given, and the mutants of the
-        // line are equivalent; the suite's Windows leg holds it.
-        const paths = given.paths.map((path) => localSpelling(path) ?? path);
+        // through another share is held where it is decided, in checkPaths.
+        const paths = given.paths.map((path) => localSpelling(path, workspace.platform) ?? path);
         for (const part of await writesBy(workspace, where.workspace.root, paths, io)) {
           decisions.push(...(await asTheHook(part.workspace, env, id, part.paths, where.workspace.root, base.base)));
         }

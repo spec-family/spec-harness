@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { brief, BRIEF_FILE, cleanup, cli, repository, temp, write, type Repository } from './helpers.js';
+import { brief, BRIEF_FILE, cleanup, cli, parsed, repository, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -118,6 +118,23 @@ describe('hook claude', () => {
     expect(await claude(JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Edit', cwd: repo.root }))).toEqual({ code: 0, stdout: said('Edit'), stderr: '' });
     const marked = await claude(`${String.fromCharCode(0xfeff)}${hookInput('PreToolUse', 'Write', { file_path: join(repo.root, 'src', 'db', 'schema.ts') })}`);
     expect(JSON.parse(marked.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+
+  it('holds before a write a path through a share on this machine that names no drive, where paths are read as Windows reads them, and decides the rest after it', async () => {
+    const share = '\\\\localhost\\work\\src\\a.ts';
+    const held = `spec-harness: ${share} names a share on this machine, which can be the repository by another name, and the guard cannot tell which directory it is. Next: write the path as a local one, the drive and the directories, or through the drive's own share, such as C$.`;
+    const asWindows = (stdin: string) => cli(['hook', 'claude'], repo.root, { stdin, env: {}, platform: 'win32' });
+    // The share and a path in scope, in the two fields a Write may name: the share alone is held.
+    const before = await asWindows(hookInput('PreToolUse', 'Write', { file_path: share, path: join(repo.root, 'src', 'auth', 'a.ts') }));
+    expect(before.code).toBe(0);
+    expect(JSON.parse(before.stdout).hookSpecificOutput).toEqual({ hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: held });
+    // After a write, the share's held, and the rest decided as ever: a write outside the scope is warned of.
+    const after = await asWindows(hookInput('PostToolUse', 'Write', { file_path: share, path: join(repo.root, 'README.md') }));
+    expect(JSON.parse(after.stdout).hookSpecificOutput.additionalContext).toContain("README.md is outside brief 001's scope");
+    // guard, from the command line, holds it as well.
+    const guard = await cli(['guard', share, '--format', 'json'], repo.root, { platform: 'win32' });
+    expect(parsed<{ decisions: { reason: string; message: string }[] }>(guard).decisions).toMatchObject([{ reason: 'held', message: `${share} names a share on this machine, which can be the repository by another name, and the guard cannot tell which directory it is` }]);
+    expect(guard.code).toBe(1);
   });
 
   it.skipIf(process.platform !== 'win32')('reads a path through a drive\'s share on this machine as the drive, and holds one through another share of it', async () => {

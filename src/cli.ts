@@ -180,10 +180,8 @@ async function decisionsFor(
 ): Promise<{ readonly decisions: Decision[]; readonly brief: BriefRow | null } | { readonly problem: string; readonly closed: BriefRow | null; readonly mend?: string }> {
   // A drive's share on this machine is decided as the drive, before
   // anything reads where the path is (fs.ts, localSpelling); one through
-  // another share is held where it is decided. On Linux, where the sweep
-  // runs, every path is as given, and the mutants of the line are
-  // equivalent; the suite's Windows leg holds it.
-  const given = asked.map((path) => localSpelling(path) ?? path);
+  // another share is held where it is decided, in checkPaths.
+  const given = asked.map((path) => localSpelling(path, workspace.platform) ?? path);
   // A path outside every work tree of the repository is decided as one
   // outside it, whichever brief is named and whatever is wrong with the
   // name: the problem held every write, a file outside the repository
@@ -494,10 +492,10 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
     if (typeof asked === 'number') return asked;
     // A share on this machine is read as the drive it names, before
     // anything decides where the path is; a write through one that names no
-    // drive is held, since it can be the repository by another name. On
-    // Linux, where the sweep runs, every path is as given, and the mutants
-    // of these lines are equivalent; the suite's Windows leg holds them.
-    const local = asked.paths.map((path) => localSpelling(path));
+    // drive is held, since it can be the repository by another name. The
+    // platform is the one the paths are read as, the process's where the
+    // caller names none.
+    const local = asked.paths.map((path) => localSpelling(path, io.platform));
     if (asked.event === 'PreToolUse' && local.includes(null)) {
       const { heldForShare } = await import('./guard.js');
       return answer(io, claudeResponse(asked.event, asked.paths.filter((_, at) => local[at] === null).map(heldForShare)));

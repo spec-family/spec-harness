@@ -275,7 +275,7 @@ export interface Captured {
 export async function cli(
   argv: readonly string[],
   cwd: string,
-  options: { readonly env?: Readonly<Record<string, string | undefined>>; readonly stdin?: string } = {},
+  options: { readonly env?: Readonly<Record<string, string | undefined>>; readonly stdin?: string; readonly platform?: NodeJS.Platform } = {},
 ): Promise<Captured> {
   let stdout = '';
   let stderr = '';
@@ -286,6 +286,7 @@ export async function cli(
     cwd,
     env: options.env ?? {},
     stdin: async () => stdin,
+    platform: options.platform,
   };
   const code = await run(argv, io);
   return { code, stdout, stderr };
