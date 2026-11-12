@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { HELP, run } from '../../src/cli.js';
 import { mergeClaudeSettings, mergeMcp, reportHooks } from '../../src/configure.js';
-import { BIN, brief, BRIEF_FILE, claudeOf, cleanup, cli, git, installFake, installHarness, installPlugin, parsed, repository, repository as aRepository, ROOT, siblings, SPEC_BRIEF, spawnBin, temp, write, type Repository } from './helpers.js';
+import { BIN, brief, BRIEF_FILE, claudeOf, cleanup, cli, git, installFake, installHarness, installPlugin, parsed, repository, repository as aRepository, ROOT, siblings, SPEC_BRIEF, spawnBin, temp, withEnvironment, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -1775,17 +1775,34 @@ describe('doctor on the rest of what a ruling and a commit need', () => {
     // Set after the last commit: a commit would be signed with it.
     repo.git('config', 'commit.gpgsign', 'true');
     repo.git('config', 'gpg.format', 'ssh');
+    // No key named: git would sign with none of them.
+    const unnamed = await cli(['doctor'], repo.root);
+    expect([unnamed.code, note(unnamed.stdout)]).toEqual([0, false]);
     repo.git('config', 'user.signingkey', `key::ssh-ed25519 ${KEY} agent@example.com`);
     const said = await cli(['doctor'], repo.root);
     expect(said.code).toBe(0);
     expect(said.stdout).toContain(
       "        note: git signs every commit here (commit.gpgsign) with a@example.com's key, line 1 of the allowed signers, so a ruling row an agent working under this account writes and commits is signed by an allowed signer and counts: sign rulings with a key git does not sign every commit with, a FIDO2 key, ssh-keygen -t ed25519-sk, whose signature needs a touch, or turn commit.gpgsign off where agents commit\n",
     );
-    // From the public key's file, beside a private key's path.
+    // Not where git signs a commit only when asked.
+    repo.git('config', 'commit.gpgsign', 'false');
+    expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(false);
+    repo.git('config', 'commit.gpgsign', 'true');
+    // From the public key's file, beside a private key's path, or named itself.
     const keys = temp();
     write(keys, 'id.pub', `ssh-ed25519 ${KEY} agent@example.com\n`);
     repo.git('config', 'user.signingkey', join(keys, 'id'));
     expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(true);
+    repo.git('config', 'user.signingkey', join(keys, 'id.pub'));
+    expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(true);
+    // Under the home directory, as ~ names it.
+    repo.git('config', 'user.signingkey', '~/id');
+    expect(note((await withEnvironment({ HOME: keys, USERPROFILE: keys }, () => cli(['doctor'], repo.root))).stdout)).toBe(true);
+    // A key whose file cannot be read is none.
+    repo.git('config', 'user.signingkey', join(keys, 'gone'));
+    const gone = await cli(['doctor'], repo.root);
+    expect([gone.code, note(gone.stdout)]).toEqual([0, false]);
+    repo.git('config', 'user.signingkey', join(keys, 'id'));
     repo.git('config', 'gpg.format', 'openpgp');
     expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(false);
   });

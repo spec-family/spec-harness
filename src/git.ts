@@ -429,8 +429,10 @@ export async function verifyCommit(sha: string, allowedSignersFile: string, cwd:
   // same, and says it is good, with the key and no principal; the cause,
   // "No principal matched.", comes after. Kept to the first line, the
   // reason read as a signature that counts (round 29's evaluation). A key
-  // a signer lists is named with its principal, "for" and not "with".
-  const key = /^Good "git" signature with (.+?)\s*$/.exec(first)?.[1];
+  // a signer lists is named with its principal, "for" and not "with". git
+  // begins the line with it, so the pattern takes no anchor at its start,
+  // which would read the same.
+  const key = /Good "git" signature with (.+?)\s*$/.exec(first)?.[1];
   const detail = key === undefined ? first : `it is signed with ${key}, which no allowed signer is`;
   // git exits 0 only for a signature by a listed principal, which it names:
   // either condition alone is equivalent to both, and both trust neither.

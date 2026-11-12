@@ -1984,20 +1984,17 @@ export function describeSigners(file: string, base: string | null, onBase: boole
 }
 
 /**
- * The note doctor gives on the signers whose key is not FIDO2, or `null`
- * when every one's is. A note, never a failure: ADR-0006 accepts a key the
- * agent's account cannot read too, and a PIV or PKCS#11 hardware key is
- * written as a plain key.
- */
-/**
- * The key a `user.signingkey` names, as a type and its base64: the key
- * itself after `key::`, as git takes one (git-config(1), user.signingKey),
- * or the first two words of a public key's text. `null` for anything else.
+ * The key a public key's text holds, as a type and its base64: its first
+ * two words, as a public key's file and the key after `key::` in
+ * `user.signingkey` write them (git-config(1), user.signingKey). `null` for
+ * anything else.
  */
 export function signingKeyOf(text: string): { readonly keyType: string; readonly key: string } | null {
-  const words = text.trim().replace(/^key::/, '').split(/\s+/);
-  const [keyType, key] = words;
-  return keyType !== undefined && key !== undefined && /^(?:ssh-|ecdsa-|sk-)/.test(keyType) ? { keyType, key } : null;
+  const words = text.trim().split(/\s+/);
+  // split answers a first part always.
+  const keyType = words[0]!;
+  const key = words[1];
+  return key !== undefined && /^(?:ssh-|ecdsa-|sk-)/.test(keyType) ? { keyType, key } : null;
 }
 
 /**
@@ -2020,6 +2017,12 @@ export function describeSigningEveryCommit(signers: readonly Pick<AllowedSigner,
   );
 }
 
+/**
+ * The note doctor gives on the signers whose key is not FIDO2, or `null`
+ * when every one's is. A note, never a failure: ADR-0006 accepts a key the
+ * agent's account cannot read too, and a PIV or PKCS#11 hardware key is
+ * written as a plain key.
+ */
 export function describeSignerKeys(signers: readonly Pick<AllowedSigner, 'line' | 'principals' | 'keyType'>[]): string | null {
   if (signers.length === 0) return null;
   const named = signers.map((signer) => `${signer.principals.join(',')} (${signer.keyType}, line ${signer.line})`).join(', ');

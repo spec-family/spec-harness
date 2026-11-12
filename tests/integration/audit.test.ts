@@ -292,6 +292,10 @@ describe('audit of a round', () => {
     expect(report.base).not.toBeNull();
     expect(report.findings.filter((f) => f.rule === 'history-shallow').map((f) => f.severity)).toEqual(['note']);
     expect(parsed<Report>(await cli(['audit', '--format', 'json'], origin.root)).findings.some((f) => f.rule === 'history-shallow')).toBe(false);
+    // A base that names no commit has no merge base to have read in it.
+    const unmeasured = parsed<Report>(await cli(['audit', '--base', 'nowhere', '--format', 'json'], clone));
+    expect(unmeasured.findings.map((f) => f.rule)).toContain('unmeasured');
+    expect(unmeasured.findings.some((f) => f.rule === 'history-shallow')).toBe(false);
   });
 
   it('runs the goals of a brief whatever its status, as spec-guard runs them only when told to ignore it', async () => {

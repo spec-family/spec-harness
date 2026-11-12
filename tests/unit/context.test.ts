@@ -170,6 +170,8 @@ describe('the contract and the scope', () => {
         'Rulings that do not count, which allow nothing:',
         '- R-012-1: its row is not committed',
         '- R-012-2: commit 0123456789ab last changed its row, and it is signed with ED25519 key SHA256:x, which no allowed signer is',
+        // A blank line ends the list, as it ends each list of the section.
+        '',
         '',
       ].join('\n'),
     );

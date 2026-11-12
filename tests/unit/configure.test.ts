@@ -645,8 +645,11 @@ describe('a key git signs every commit with (ADR-0006)', () => {
   const signer = { line: 2, principals: ['p@example.com', 'q@example.com'], keyType: 'ssh-ed25519', key: 'AAAA' };
 
   it('reads the key user.signingkey names, after key:: or as a public key\'s text', () => {
-    expect(signingKeyOf('key::ssh-ed25519 AAAA agent@example.com')).toEqual({ keyType: 'ssh-ed25519', key: 'AAAA' });
+    expect(signingKeyOf('ssh-ed25519 AAAA agent@example.com')).toEqual({ keyType: 'ssh-ed25519', key: 'AAAA' });
     expect(signingKeyOf('  ssh-ed25519 AAAA\n')).toEqual({ keyType: 'ssh-ed25519', key: 'AAAA' });
+    expect(signingKeyOf('ssh-ed25519 \t AAAA')).toEqual({ keyType: 'ssh-ed25519', key: 'AAAA' });
+    // A type that only holds one of the prefixes is none.
+    expect(signingKeyOf('rsa-ssh-x AAAA')).toBeNull();
     expect(signingKeyOf('ecdsa-sha2-nistp256 BBBB')).toEqual({ keyType: 'ecdsa-sha2-nistp256', key: 'BBBB' });
     expect(signingKeyOf('sk-ssh-ed25519@openssh.com CCCC')).toEqual({ keyType: 'sk-ssh-ed25519@openssh.com', key: 'CCCC' });
     for (const text of ['', 'ssh-ed25519', '-----BEGIN OPENSSH PRIVATE KEY-----', '0123ABCD', 'key::']) expect(signingKeyOf(text), text).toBeNull();
