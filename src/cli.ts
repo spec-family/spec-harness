@@ -27,7 +27,7 @@ import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig,
 import { changedPaths, GitError, show, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
-import { afterResponse, callFile, callRecord, claudeResponse, gitResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
+import { afterResponse, callFile, callRecord, claudeResponse, gitResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, otherAgent, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
 import type { Base } from './round.js';
 import type { BriefRow } from './types.js';
 import { declaredVersion, SiblingError } from './siblings.js';
@@ -267,6 +267,11 @@ async function writeAsked(io: CliIO): Promise<HookRequest | number> {
     // it cannot parse is, below: it has no event to hold a write by.
     return answer(io, warningResponse(`the hook input could not be read: ${(error as Error).message}, so nothing it asks about is checked`));
   }
+  // Another agent that runs the line Claude Code's settings hold asks in a
+  // language of its own, and is told that its write is not checked, where
+  // it went ahead with no word (ADR-0012).
+  const agent = otherAgent(question);
+  if (agent !== null) return answer(io, warningResponse(`the hook input is not one hook claude checks: ${agent}; hook claude checks the writes of Claude Code's Edit, Write, MultiEdit and NotebookEdit alone, so this one is not checked`));
   const request = parseClaudeHook(question);
   // A hook that cannot read its question refuses nothing it cannot see, and
   // says so where the person reads it.

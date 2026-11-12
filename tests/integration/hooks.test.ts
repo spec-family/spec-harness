@@ -86,6 +86,13 @@ describe('hook claude', () => {
     }
     const warned = await claude(hookInput('PostToolUse', 'Write', { file_path: '.claude/settings.local.json' }));
     expect(JSON.parse(warned.stdout).hookSpecificOutput.additionalContext).toContain('set "protectHarness" to "ask" or "deny" in .spec-harness.json');
+
+  it("says to the person that another agent's write is not checked, and holds nothing for it (ADR-0012)", async () => {
+    const said = (agent: string) => `${JSON.stringify({ systemMessage: `spec-harness: the hook input is not one hook claude checks: ${agent}; hook claude checks the writes of Claude Code's Edit, Write, MultiEdit and NotebookEdit alone, so this one is not checked` })}\n`;
+    const protectedFile = join(repo.root, 'src', 'db', 'schema.ts');
+    expect(await claude(JSON.stringify({ cursor_version: '1.7.2', hook_event_name: 'preToolUse', tool_name: 'Write', tool_input: { file_path: protectedFile } }))).toEqual({ code: 0, stdout: said("it carries cursor_version, as Cursor's does"), stderr: '' });
+    expect(await claude(JSON.stringify({ toolName: 'edit', toolArgs: JSON.stringify({ path: protectedFile }), cwd: repo.root }))).toEqual({ code: 0, stdout: said("it carries toolName, as GitHub Copilot's does"), stderr: '' });
+    expect(await claude(hookInput('PreToolUse', 'apply_patch', { command: ['*** Begin Patch', '*** Update File: src/db/schema.ts', '*** End Patch', ''].join('\n') }))).toEqual({ code: 0, stdout: said("its tool apply_patch carries a patch, as Codex's apply_patch does"), stderr: '' });
   });
 
   it('ignores a tool that writes no file, without asking spec-brief', async () => {
