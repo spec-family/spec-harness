@@ -40,12 +40,14 @@ jobs:
         # ADR-0008 has the steps that move one.
         os: [ubuntu-24.04, ubuntu-26.04, windows-2025-vs2026, macos-26]
         node: ['22', '24', '26']
-        # A pull request runs four of the twelve legs: the floor and the current
-        # release on the gates' image, and the floor on Windows and macOS. A push
+        # A pull request runs three of the twelve legs: the floor and the current
+        # release on the gates' image, and the floor on Windows. macOS, whose
+        # hosted runners GitHub could not always supply (2026-11-12), runs on
+        # main and in releases only. A push
         # to main, a manual run and a release (which calls this workflow) run
         # them all, so every leg still passes before a version is staged.
         # spec-core's ADR-0008, amended 2026-11-12, says why.
-        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-26.04"},{"node":"24"},{"os":"windows-2025-vs2026","node":"26"},{"os":"macos-26","node":"26"}]' || '[]') }}
+        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-26.04"},{"node":"24"},{"os":"windows-2025-vs2026","node":"26"},{"os":"macos-26"}]' || '[]') }}
     steps:
       # Pinned to commits, with the tag beside each, as in the sibling tools.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
