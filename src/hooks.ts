@@ -92,6 +92,67 @@ export const HOOK_BUDGET_MS = 45_000;
 /** The events that name no tool, which the hook answers of the session and not of a write. */
 const NO_TOOL: readonly string[] = [SESSION_START, TURN_END];
 
+/**
+ * The fields of another agent's hook input, by the agent whose they are,
+ * as each agent's hooks reference has them (read 2026-11-12): Cursor's
+ * `cursor_version`, and GitHub Copilot's `toolName` and `toolArgs`. Copilot
+ * and Cursor read `.claude/settings.json` and run the line `init` wrote
+ * there, and its answer is in a language neither reads, so a write of theirs
+ * goes ahead unchecked (round 29's evaluation).
+ */
+const AGENT_FIELDS: readonly (readonly [string, string])[] = [
+  ['cursor_version', 'Cursor'],
+  ['toolName', 'GitHub Copilot'],
+  ['toolArgs', 'GitHub Copilot'],
+];
+
+/** Events of another agent's hooks, by the agent whose they are: Cursor's in camelCase, and Gemini CLI's. */
+const AGENT_EVENTS: readonly (readonly [string, string])[] = [
+  ['preToolUse', 'Cursor'],
+  ['postToolUse', 'Cursor'],
+  ['BeforeTool', 'Gemini CLI'],
+  ['AfterTool', 'Gemini CLI'],
+];
+
+/**
+ * Claude Code's tools that name a file they read and write none, which a
+ * matcher that lets every tool through starts the hook for.
+ */
+const READING_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep', 'LS', 'NotebookRead'];
+
+/** The fields another agent's tools name a file in, which no tool of Claude Code's does. */
+const OTHER_PATH_FIELDS: readonly string[] = ['filePath', 'TargetFile', 'target_file'];
+
+/**
+ * What a hook input says of another agent than Claude Code, in words for
+ * the line the hook gives: a field or an event of another agent's, or a
+ * tool the guard does not know that names a file, or a patch, which is how
+ * Codex's `apply_patch` writes one. `null` where it says nothing of one.
+ * `hook claude` guards Claude Code's writes alone, so such a write goes
+ * ahead unchecked, and the person is told (ADR-0012).
+ */
+export function otherAgent(raw: string): string | null {
+  let value: unknown = null;
+  try {
+    value = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+  } catch {
+    // Text that is not JSON leaves the value null, which is no object.
+  }
+  if (!isObject(value)) return null;
+  const field = AGENT_FIELDS.find(([name]) => name in value);
+  if (field !== undefined) return `it carries ${field[0]}, as ${field[1]}'s does`;
+  const event = AGENT_EVENTS.find(([name]) => value['hook_event_name'] === name);
+  if (event !== undefined) return `its event is ${event[0]}, ${event[1]}'s`;
+  const tool = value['tool_name'];
+  const input = value['tool_input'];
+  if (typeof tool !== 'string' || WRITING_TOOLS.includes(tool) || READING_TOOLS.includes(tool) || !isObject(input)) return null;
+  const named = [...PATH_FIELDS, ...OTHER_PATH_FIELDS].find((name) => typeof input[name] === 'string');
+  if (named !== undefined) return `its tool ${tool}, which the guard does not know, names a file in ${named}`;
+  const command = input['command'];
+  if (typeof command === 'string' && command.includes('*** Begin Patch')) return `its tool ${tool} carries a patch, as Codex's apply_patch does`;
+  return null;
+}
+
 /** Reads a Claude Code hook's stdin, or says why it cannot. */
 export function parseClaudeHook(raw: string): HookRequest | { readonly error: string } {
   let value: unknown;

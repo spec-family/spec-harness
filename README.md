@@ -125,6 +125,8 @@ The hooks ask it of every write:
 
 A guard is a guardrail - an agent that writes through a shell passes it - so the audit and spec-brief's archive are the gates ([`guard` and the hooks](docs/reference/guard.md)).
 
+**The write guard covers Claude Code only.** Other agents have hooks that can hold a write, each in a language of its own. GitHub Copilot and Cursor read `.claude/settings.json` and run the line `init` wrote there, and neither reads its answer: Copilot holds every edit, and Cursor lets every one through. `hook claude` says so in one line where the question carries another agent's fields, and checks nothing for it. For any agent, git's pre-commit hook from `init --git-hook`, the audit and spec-brief's archive hold.
+
 ### `escalate`, `rule`, `rulings`
 
 When the round cannot be done without a protected file, the agent writes a memo and stops; a person rules, and signs:

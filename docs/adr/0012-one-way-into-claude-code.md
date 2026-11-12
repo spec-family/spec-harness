@@ -692,6 +692,22 @@ it, and `CI` is said in the words it was. No other forge's variable is
 read, and none for any other purpose; nothing is renamed or taken away, and
 no run that passed can fail for it.
 
+*Amended 2026-11-12.* **The one way in is Claude Code's, and other agents
+run it too.** GitHub Copilot (CLI and cloud agent) and Cursor read
+`.claude/settings.json` and run the hook lines `init` wrote, and each
+answers a hook in a language of its own: Copilot needs `exec` where `init`
+writes `args`, reads a top-level `permissionDecision` and holds a write
+whose hook exits non-zero, so it held every edit; Cursor lets a write
+through for any exit but 2, so every one went ahead, with no word. The
+README and the guard reference say that the write guard covers Claude Code
+only, and `hook claude` says in one line to the person, exit 0, that a
+write is not checked where the question carries another agent's fields,
+an event of another agent's, or a tool the guard does not know that names
+a file or carries a patch (`otherAgent`, hooks.ts). It checks nothing for
+such a question: it cannot answer in a language the asker reads. Adapters
+of their own, `hook codex` and `hook copilot`, are round 29's next step
+(its D2).
+
 ## Consequences
 
 - A plugin turned on by managed settings or `--settings` is invisible to

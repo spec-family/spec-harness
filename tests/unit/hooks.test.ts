@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Decision, Verdict } from '../../src/guard.js';
-import { afterResponse, CALL_VARIABLES, CALLABLE_TOOLS, callFile, callRecord, claudeResponse, gitResponse, keptCall, mendResponse, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningsKept, warningsOf, WRITING_TOOLS, type HookRequest } from '../../src/hooks.js';
+import { afterResponse, CALL_VARIABLES, CALLABLE_TOOLS, callFile, callRecord, claudeResponse, gitResponse, keptCall, mendResponse, otherAgent, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningsKept, warningsOf, WRITING_TOOLS, type HookRequest } from '../../src/hooks.js';
 
 function hook(fields: Record<string, unknown>): string {
   return JSON.stringify({ session_id: 's', hook_event_name: 'PreToolUse', tool_name: 'Write', cwd: '/repo', ...fields });
@@ -89,6 +89,48 @@ describe('reading a Claude Code hook', () => {
     expect(parseClaudeHook('null')).toEqual({ error: 'the hook input is not a JSON object' });
     expect(parseClaudeHook(JSON.stringify({ tool_name: 'Write' }))).toEqual({ error: 'the hook input names no event or tool' });
     expect(parseClaudeHook(JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 3 }))).toEqual({ error: 'the hook input names no event or tool' });
+  });
+});
+
+describe("another agent's question (ADR-0012)", () => {
+  const ask = (fields: Record<string, unknown>): string | null => otherAgent(JSON.stringify(fields));
+
+  it("names the field or the event of another agent's hooks", () => {
+    expect(ask({ cursor_version: '1.7', hook_event_name: 'preToolUse', tool_name: 'Write', tool_input: { file_path: 'a.ts' } })).toBe("it carries cursor_version, as Cursor's does");
+    expect(ask({ toolName: 'edit', toolArgs: '{}' })).toBe("it carries toolName, as GitHub Copilot's does");
+    expect(ask({ toolArgs: '{}' })).toBe("it carries toolArgs, as GitHub Copilot's does");
+    expect(ask({ hook_event_name: 'preToolUse', tool_name: 'Write', tool_input: { file_path: 'a.ts' } })).toBe("its event is preToolUse, Cursor's");
+    expect(ask({ hook_event_name: 'postToolUse' })).toBe("its event is postToolUse, Cursor's");
+    expect(ask({ hook_event_name: 'BeforeTool', tool_name: 'write_file' })).toBe("its event is BeforeTool, Gemini CLI's");
+    expect(ask({ hook_event_name: 'AfterTool' })).toBe("its event is AfterTool, Gemini CLI's");
+  });
+
+  it('names a tool the guard does not know that names a file, or carries a patch', () => {
+    const pre = { hook_event_name: 'PreToolUse' };
+    expect(ask({ ...pre, tool_name: 'mcp__fs__write_file', tool_input: { path: 'a.ts' } })).toBe('its tool mcp__fs__write_file, which the guard does not know, names a file in path');
+    expect(ask({ ...pre, tool_name: 'write_file', tool_input: { filePath: 'a.ts' } })).toBe('its tool write_file, which the guard does not know, names a file in filePath');
+    expect(ask({ ...pre, tool_name: 'x', tool_input: { TargetFile: 'a.ts' } })).toBe('its tool x, which the guard does not know, names a file in TargetFile');
+    expect(ask({ ...pre, tool_name: 'x', tool_input: { target_file: 'a.ts' } })).toBe('its tool x, which the guard does not know, names a file in target_file');
+    expect(ask({ ...pre, tool_name: 'Delete', tool_input: { file_path: 'a.ts' } })).toBe('its tool Delete, which the guard does not know, names a file in file_path');
+    expect(ask({ ...pre, tool_name: 'n', tool_input: { notebook_path: 'a.ipynb' } })).toBe('its tool n, which the guard does not know, names a file in notebook_path');
+    const patch = ['*** Begin Patch', '*** Update File: src/a.ts', '@@', '-a', '+b', '*** End Patch', ''].join('\n');
+    expect(ask({ ...pre, tool_name: 'apply_patch', tool_input: { command: patch } })).toBe("its tool apply_patch carries a patch, as Codex's apply_patch does");
+  });
+
+  it("says nothing of Claude Code's own questions, a tool that names no file, or what is not a JSON object", () => {
+    for (const tool of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Read', 'Glob', 'Grep', 'LS', 'NotebookRead']) {
+      expect(ask({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { file_path: 'a.ts', path: 'b', notebook_path: 'c' } }), tool).toBeNull();
+    }
+    expect(ask({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } })).toBeNull();
+    expect(ask({ hook_event_name: 'PreToolUse', tool_name: 'x', tool_input: { file_path: 3 } })).toBeNull();
+    expect(ask({ hook_event_name: 'PreToolUse', tool_name: 'x', tool_input: 'a.ts' })).toBeNull();
+    expect(ask({ hook_event_name: 'PreToolUse', tool_name: 3, tool_input: { file_path: 'a.ts' } })).toBeNull();
+    expect(ask({ hook_event_name: 'SessionStart' })).toBeNull();
+    expect(otherAgent('not json')).toBeNull();
+    // JSON that is no object: a field is looked for in an object alone.
+    for (const text of ['null', '"toolName"', '7']) expect(otherAgent(text), text).toBeNull();
+    expect(otherAgent('[{"cursor_version":"1"}]')).toBeNull();
+    expect(otherAgent(`${String.fromCharCode(0xfeff)}{"toolName":"edit"}`)).toBe("it carries toolName, as GitHub Copilot's does");
   });
 });
 
