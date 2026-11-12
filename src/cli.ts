@@ -225,12 +225,19 @@ const SYMBOL: Record<Decision['verdict'], string> = { allow: 'ok     ', warn: 'w
 async function guardCommand(options: Options, io: CliIO): Promise<number> {
   if (options.positionals.length === 0) throw new UsageError('guard needs at least one path');
   const workspace = await openWorkspace(options, io);
-  const decided = await decisionsFor(workspace, options, io, options.positionals, io.cwd);
-  if ('problem' in decided) {
-    io.stderr.write(`spec-harness: ${decided.problem}\n`);
-    return EXIT_ERROR;
+  // Each path by the work tree of this repository that holds it, as the
+  // hook and the server's check_path decide it: a linked worktree's file,
+  // asked from the main checkout, was outside the repository here, where
+  // the hook refused a write to it (ADR-0005).
+  const decisions: Decision[] = [];
+  for (const part of await writesBy(workspace, io.cwd, options.positionals, io)) {
+    const decided = await decisionsFor(part.workspace, options, io, part.paths, io.cwd);
+    if ('problem' in decided) {
+      io.stderr.write(`spec-harness: ${decided.problem}\n`);
+      return EXIT_ERROR;
+    }
+    decisions.push(...decided.decisions);
   }
-  const { decisions } = decided;
   if (options.format === 'json') {
     io.stdout.write(json('guard', { decisions }));
   } else {

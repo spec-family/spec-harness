@@ -152,6 +152,23 @@ describe('every other command in a linked worktree with no install (ADR-0005)', 
   });
 });
 
+describe('guard, asked of a linked worktree\'s file from the main checkout (ADR-0005)', () => {
+  it('decides it by the worktree that holds it, as the hook does, where it said the file was outside the repository', async () => {
+    const repo = project();
+    const tree = linked(repo, join(repo.root, '.claude', 'worktrees', 'w'), 'claude/brief-001-w');
+    const guard = await cli(['guard', file(tree, 'src/db/schema.ts'), file(tree, 'src/auth/a.ts'), '--format', 'json'], repo.root);
+    expect(guard.code).toBe(1);
+    expect(parsed<{ decisions: { path: string; verdict: string; reason: string }[] }>(guard).decisions.map((d) => [d.path, d.verdict, d.reason])).toEqual([
+      ['src/db/schema.ts', 'deny', 'protected'],
+      ['src/auth/a.ts', 'allow', 'in-scope'],
+    ]);
+    const hooked = await hook(repo.root, 'PreToolUse', repo.root, { file_path: file(tree, 'src/db/schema.ts') });
+    expect(decision(hooked.stdout)).toBe('deny');
+    // A file of the main checkout is decided by its branch, which names no brief, as before.
+    expect(parsed<{ decisions: { reason: string }[] }>(await cli(['guard', 'src/db/schema.ts', '--format', 'json'], repo.root)).decisions[0]?.reason).toBe('no-brief');
+  });
+});
+
 describe('a path in a third work tree of the repository (ADR-0005)', () => {
   // Neither the one the project names nor the one cwd is in: the hook read it
   // from the project's top, as a file of the project or one outside it, and
