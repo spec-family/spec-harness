@@ -209,7 +209,8 @@ describe("Copilot's question (ADR-0012)", () => {
     expect(COPILOT_WRITING_TOOLS).toEqual(['create', 'edit', 'str_replace_editor', 'apply_patch']);
     expect(parseCopilotHook(copilot({ toolName: 'edit', toolArgs: JSON.stringify({ path: 'src/a.ts', old_str: 'a', new_str: 'b' }) }))).toEqual({ event: 'PreToolUse', tool: 'edit', cwd: '/repo', paths: ['src/a.ts'], session: 'c1', call: null });
     // Each field once, in the order they are read, an empty one not at all.
-    expect(parseCopilotHook(copilot({ toolName: 'create', toolArgs: { file_path: 'b.ts', filePath: 'c.ts', filename: 'e.ts', file: 'b.ts', path: '' } }))).toMatchObject({ paths: ['b.ts', 'c.ts', 'e.ts'] });
+    expect(parseCopilotHook(copilot({ toolName: 'create', toolArgs: { file_path: 'b.ts', filePath: 'c.ts', filename: 'e.ts', file: 'd.ts', path: '' } }))).toMatchObject({ paths: ['b.ts', 'c.ts', 'e.ts', 'd.ts'] });
+    expect(parseCopilotHook(copilot({ toolName: 'create', toolArgs: { path: 'a.ts', file: 'a.ts' } }))).toMatchObject({ paths: ['a.ts'] });
     expect(parseCopilotHook(copilot({ toolName: 'apply_patch', toolArgs: { input: '*** Begin Patch\n*** Add File: e.ts\n+x\n*** End Patch' } }))).toMatchObject({ paths: ['e.ts'] });
     // A file a field and the patch both name is read once; an argument that is no text, or no patch, names none.
     expect(parseCopilotHook(copilot({ toolName: 'apply_patch', toolArgs: { path: 'e.ts', lines: 3, note: 'no patch', input: '*** Begin Patch\n*** Add File: e.ts\n*** Add File: f.ts\n*** End Patch' } }))).toMatchObject({ paths: ['e.ts', 'f.ts'] });

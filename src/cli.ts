@@ -538,7 +538,9 @@ async function answerAgent(agent: Agent, options: Options, io: CliIO): Promise<n
     // The one write a configuration that does not load lets through is to
     // the file itself, as for hook claude (ADR-0005). The configuration is
     // read from a file here, so the test of `file` is the compiler's, and
-    // its mutant is equivalent, as for hook claude.
+    // its mutant is equivalent, as for hook claude. An error that is no
+    // configuration's has no file, which no path names (writesOnly), so
+    // the test of the class reads the same where a mutant drops it.
     if (error instanceof ConfigError && error.file !== null && writesOnly(request.paths, error.file, cwd)) return EXIT_OK;
     return answer(io, heldResponse(agent, `cannot check this write: ${(error as Error).message}`));
   }
