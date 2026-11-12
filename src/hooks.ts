@@ -132,11 +132,11 @@ const OTHER_PATH_FIELDS: readonly string[] = ['filePath', 'TargetFile', 'target_
  * ahead unchecked, and the person is told (ADR-0012).
  */
 export function otherAgent(raw: string): string | null {
-  let value: unknown;
+  let value: unknown = null;
   try {
     value = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
   } catch {
-    return null;
+    // Text that is not JSON leaves the value null, which is no object.
   }
   if (!isObject(value)) return null;
   const field = AGENT_FIELDS.find(([name]) => name in value);

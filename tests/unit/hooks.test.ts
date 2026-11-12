@@ -127,6 +127,8 @@ describe("another agent's question (ADR-0012)", () => {
     expect(ask({ hook_event_name: 'PreToolUse', tool_name: 3, tool_input: { file_path: 'a.ts' } })).toBeNull();
     expect(ask({ hook_event_name: 'SessionStart' })).toBeNull();
     expect(otherAgent('not json')).toBeNull();
+    // JSON that is no object: a field is looked for in an object alone.
+    for (const text of ['null', '"toolName"', '7']) expect(otherAgent(text), text).toBeNull();
     expect(otherAgent('[{"cursor_version":"1"}]')).toBeNull();
     expect(otherAgent(`${String.fromCharCode(0xfeff)}{"toolName":"edit"}`)).toBe("it carries toolName, as GitHub Copilot's does");
   });

@@ -86,6 +86,7 @@ describe('hook claude', () => {
     }
     const warned = await claude(hookInput('PostToolUse', 'Write', { file_path: '.claude/settings.local.json' }));
     expect(JSON.parse(warned.stdout).hookSpecificOutput.additionalContext).toContain('set "protectHarness" to "ask" or "deny" in .spec-harness.json');
+  });
 
   it("says to the person that another agent's write is not checked, and holds nothing for it (ADR-0012)", async () => {
     const said = (agent: string) => `${JSON.stringify({ systemMessage: `spec-harness: the hook input is not one hook claude checks: ${agent}; hook claude checks the writes of Claude Code's Edit, Write, MultiEdit and NotebookEdit alone, so this one is not checked` })}\n`;
