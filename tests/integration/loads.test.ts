@@ -138,6 +138,8 @@ describe('the hook', () => {
     repo.write('.github/allowed_signers', 'a@example.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGtQUDZWhs8k/cvAw9yvIZ8xSV4FzrRbRUQ1o4rqxa1w\n');
     repo.commit('signers');
     repo.git('checkout', '-q', 'brief/001-rotate');
+    // A signer counts where the merge base lists it too (ADR-0006).
+    repo.git('merge', '-q', '--no-edit', 'main');
     const ruled = await hook(repo, 'PreToolUse', 'src/db/schema.ts');
     // The row's commit is not signed, so the ruling does not count.
     expect(ruled.stdout).toContain('"permissionDecision":"deny"');

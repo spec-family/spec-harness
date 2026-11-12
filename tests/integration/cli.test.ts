@@ -780,8 +780,11 @@ describe('doctor on a brief or a base that names nothing', () => {
     expect(parsed<{ base: unknown }>(await cli(['doctor', '--format', 'json'], clone)).base).toEqual({ ref: 'remotes/origin/main', source: 'config', mergeBase: head });
     // A base on the line is read as typed.
     expect((await cli(['doctor', '--base', 'main'], clone)).stdout).toContain('\nbase    none: "main" names no commit\n');
-    // Where the remote has no branch of the name either, both are said.
+    // The work tree names no base the remote's default branch does not (ADR-0006).
     write(clone, '.spec-harness.json', JSON.stringify({ base: 'trunk', tools: siblings() }));
+    expect((await cli(['doctor'], clone)).stdout).toContain(`\nbase    remotes/origin/main (.spec-harness.json), merge base ${head.slice(0, 12)}\n`);
+    // With no default branch recorded, where the remote has no branch of the name either, both are said.
+    git(clone, 'remote', 'set-head', 'origin', '--delete');
     expect((await cli(['doctor'], clone)).stdout).toContain('\nbase    none: "trunk" names no commit, and neither does remotes/origin/trunk\n');
     // And where the branch is here, it is the base, as it was.
     write(clone, '.spec-harness.json', JSON.stringify({ base: 'main', tools: siblings() }));
