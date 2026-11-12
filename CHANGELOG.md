@@ -40,10 +40,11 @@ cannot turn a run red. The family's policy is
   ahead
   ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
 
-- **The write guard says it covers Claude Code only.** GitHub Copilot and
-  Cursor read `.claude/settings.json` and run the hook line `init` wrote
-  there, and neither reads the answer: Copilot holds every edit, and
-  Cursor lets every one through, with no word. `hook claude` now says in
+- **The write guard says it covers Claude Code only.** By their
+  documentation (read 2026-11-12), GitHub Copilot and Cursor read
+  `.claude/settings.json` and run the hook line `init` wrote there, and
+  neither reads the answer: Copilot would hold every edit, and Cursor let
+  every one through, with no word; neither was run against it. `hook claude` now says in
   one line to the person, exit 0, that the write is not checked, where the
   question carries Cursor's `cursor_version`, Copilot's `toolName` or
   `toolArgs`, an event of Cursor's or Gemini CLI's, or a tool the guard does
