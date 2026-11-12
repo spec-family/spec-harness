@@ -94,6 +94,7 @@ describe('hook claude', () => {
     expect(await claude(JSON.stringify({ cursor_version: '1.7.2', hook_event_name: 'preToolUse', tool_name: 'Write', tool_input: { file_path: protectedFile } }))).toEqual({ code: 0, stdout: said("it carries cursor_version, as Cursor's does"), stderr: '' });
     expect(await claude(JSON.stringify({ toolName: 'edit', toolArgs: JSON.stringify({ path: protectedFile }), cwd: repo.root }))).toEqual({ code: 0, stdout: said("it carries toolName, as GitHub Copilot's does"), stderr: '' });
     expect(await claude(hookInput('PreToolUse', 'apply_patch', { command: ['*** Begin Patch', '*** Update File: src/db/schema.ts', '*** End Patch', ''].join('\n') }))).toEqual({ code: 0, stdout: said("its tool apply_patch carries a patch, as Codex's apply_patch does"), stderr: '' });
+  });
 
   it('holds every write but one to the brief, where spec-brief says it cannot read the brief whole, and says so as the session starts', async () => {
     // spec-brief as installed, but for its list, which says a field it could not read.
