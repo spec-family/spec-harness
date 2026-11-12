@@ -39,6 +39,8 @@ A part that could not be measured is a finding, never a silence. Each of these i
 - `protection-rooted` and `ruling-path-rooted`: a pattern in `protectedFiles`, or a path of a signed ruling, that a leading `/` roots, alone or on a brace alternative, such as `/src/db/schema.ts`. It protects no path, so the round could change the file it meant to protect, or allows nothing, so the file is still refused. Write the protection without the slash; a ruling's path is fixed by a new ruling.
 - `manifest-name-rooted`: a name a leading `/` roots at the filesystem's root, alone or on a brace alternative, such as `/package.json` or `{/Gemfile,Cargo.toml}`. Every path the audit reads is repository-relative, so the rooted part names no manifest; write the name without the slash, since a name is matched at any depth.
 
+One is a note, which fails nothing: `history-shallow`, where the merge base was read in a history cut short, as a clone with `--depth` leaves it. git can find an older merge base there than the whole history has, and the round's changes then read as more than it made; fetch the whole history, as `fetch-depth: 0` or `GIT_DEPTH: 0` does in CI.
+
 ## What the round is measured by
 
 The base and the allowed-signers file vouch for the round, so the round does not choose them: the work tree's `.spec-harness.json` is the round's to edit. They are read from the configuration on a ref the round cannot move ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md), amended 2026-11-12):

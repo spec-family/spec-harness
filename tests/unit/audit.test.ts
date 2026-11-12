@@ -89,6 +89,7 @@ describe('what the audit measured', () => {
       'unmeasured',
       'harness-config-changed',
       'harness-config-unanchored',
+      'history-shallow',
       'archive-unchecked',
       'assertions-unchecked',
       'assertion-unreadable',
@@ -200,6 +201,22 @@ describe('an assertion spec-guard cannot read', () => {
     const report = audit(input({ assertions: [outcome(false, 'Invariants')], unreadableAssertions: unreadable.slice(0, 1), unverifiedRulings: [{ id: 'R-1', reason: 'r' }] }));
     expect(report.findings.map((f) => f.rule)).toEqual(['goal-failed', 'assertion-unreadable', 'ruling-unverified']);
     expect(audit(input({ unreadableAssertions: [] })).findings).toEqual([]);
+  });
+});
+
+describe('a history cut short', () => {
+  it('notes it where the merge base was read in one, and says nothing of one that is whole', () => {
+    expect(audit(input({ shallow: true })).findings).toEqual([
+      {
+        rule: 'history-shallow',
+        severity: 'note',
+        message: "the history is shallow, so the merge base git found can be older than the one the whole history has, and the round's changes measured from it more than it made",
+        hint: 'fetch the whole history, as fetch-depth: 0 or GIT_DEPTH: 0 does in CI',
+        file: FILE,
+      },
+    ]);
+    expect(audit(input({ shallow: false })).findings).toEqual([]);
+    expect(audit(input()).findings).toEqual([]);
   });
 });
 

@@ -3,7 +3,7 @@
 The packet an agent starts a round with: the brief in full - it is the contract - then what it implies:
 
 - the files the round may write and must not change, as the guard reads them;
-- the rulings already signed;
+- the rulings already signed, and beneath them each ruling that allows something and does not count, with why: its row not committed, not signed, or signed with a key no allowed signer is;
 - the briefs it depends on, and whether they are done;
 - the architecture rules spec-guard holds that code to;
 - the documents the brief links to, whole, until the packet reaches its budget (`context.budget`, 60,000 characters). Documents left out are named by path, not dropped. Each is headed by its first level-one heading and the status its front matter gives under `status`, in English as every spec-* tool reads it, whatever language the document is written in.

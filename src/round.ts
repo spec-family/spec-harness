@@ -467,6 +467,7 @@ export async function buildContext(
     cited,
     rules,
     rulings: rulings.verified,
+    unverified: rulings.unverified,
     branch: workspace.branch,
     base: base.kind === 'resolved' ? base.ref : null,
     budget: workspace.config.context.budget,
@@ -945,12 +946,13 @@ export async function runAudit(workspace: Workspace, brief: BriefRow, reader: Do
   const { audit, tally } = await import('./audit.js');
   const base = await resolveBase(workspace, baseFlag);
   const text = await briefText(workspace, brief);
-  const [dependencies, archive, assertions, rulings, plugin] = await Promise.all([
+  const [dependencies, archive, assertions, rulings, plugin, shallow] = await Promise.all([
     dependencyChanges(workspace, base),
     archiveReasons(workspace, brief, base),
     briefAssertions(workspace, brief, text, reader),
     checkRulings(workspace, brief, text, reader, base),
     specBriefPlugin(workspace.root),
+    isShallow(workspace.root),
   ]);
   const unmeasured =
     base.kind === 'unresolved' ? base.reason : base.mergeBase === base.head ? `${base.ref} and HEAD are the same commit: there is nothing to measure` : null;
@@ -970,6 +972,8 @@ export async function runAudit(workspace: Workspace, brief: BriefRow, reader: Do
     verifiedRulings: rulings.verified,
     pluginLoaded: plugin.kind === 'loaded',
     pluginNamedEarlier: plugin.kind === 'earlier',
+    // Only a merge base is read from the history, and a base not resolved has none.
+    shallow: base.kind === 'resolved' && shallow === true,
   });
   const findings = [...rulings.problems, ...report.findings];
   return {
