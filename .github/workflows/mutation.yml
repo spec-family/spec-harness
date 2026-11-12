@@ -19,6 +19,18 @@ name: Mutation
 # code under a TypeScript `as` (scripts/mutation-unmeasured.mjs), and the
 # step after it names the undetected mutants that main's newest sweep did not
 # have (scripts/mutation-compare.mjs).
+#
+# It runs in two tiers, as spec-guard's and spec-graph's do (ADR-0010,
+# amended 2026-11-13). A pull request runs it incrementally, from the file
+# main's last full sweep published: Stryker keeps the verdict of a mutant
+# whose code and covering tests read as they did then, and runs the rest. A
+# push to main, the schedule and a dispatch run it in full, and that is the
+# score that counts. The incremental result is only as good as its file: a
+# survivor in a module the pull request did not change, which another
+# module's change made reachable, keeps its old verdict there and is found
+# by main's full sweep after the merge. Both tiers apply the same `break` to
+# the merged report, and every push to main derives the score again from
+# nothing.
 on:
   # A pull request that changes a module the core sweep does not mutate
   # whole, or what this sweep is made of, is swept before it merges: twice a
@@ -127,7 +139,9 @@ permissions:
 
 jobs:
   shard:
-    name: mutation (full, shard ${{ matrix.shard }} of ${{ strategy.job-total }})
+    # The name says which tier ran, so a green tick in the checks list cannot be
+    # mistaken for an authority it does not have.
+    name: mutation (${{ github.event_name == 'pull_request' && 'incremental' || 'full' }}, shard ${{ matrix.shard }} of ${{ strategy.job-total }})
     # Only a dispatch has the input, and only a dispatch can leave the sweep out.
     if: github.event_name != 'workflow_dispatch' || inputs.full
     # The image the hosted sweeps in ADR-0010 were measured on. Another image
@@ -152,6 +166,7 @@ jobs:
         # One entry per shard in scripts/mutation-shards.mjs; a test checks.
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     env:
+      FULL: ${{ github.event_name != 'pull_request' }}
       MUTATION_SHARD: ${{ matrix.shard }}
     steps:
       # Pinned to commits, with the tag beside each, as in ci.yml.
@@ -175,14 +190,49 @@ jobs:
       - name: Build
         run: npm run build
 
+      # The versions of Stryker and vitest that npm ci installed. An incremental
+      # file matches its tests to this run's by what those versions make of a
+      # test, so it is restored only by the toolchain that wrote it
+      # (scripts/mutation-shards.mjs, toolchainKey). It runs in a full sweep too,
+      # which publishes under it.
+      - name: Name the toolchain
+        id: toolchain
+        run: echo "key=$(node scripts/mutation-shards.mjs toolchain)" >> "$GITHUB_OUTPUT"
+
+      # A pull request starts from what main's full sweep last published with
+      # its toolchain. One that finds nothing tests every mutant, and is right,
+      # only slower: a pull request that moves Stryker or vitest sweeps in full
+      # on its own. A full sweep restores nothing and derives every verdict
+      # from the code.
+      - name: Restore the incremental file
+        if: env.FULL != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ steps.toolchain.outputs.key }}-${{ github.sha }}
+          restore-keys: |
+            stryker-incremental-${{ steps.toolchain.outputs.key }}-
+
+      # The file holds the whole sweep, and Stryker reports the verdicts it
+      # holds for files a run does not mutate as though the run had made them,
+      # which the merge refuses. So each shard keeps only its own files, and
+      # every test (scripts/mutation-shards.mjs, cacheFor).
+      - name: Keep this shard's part of the incremental file
+        if: env.FULL != 'true'
+        run: node scripts/mutation-shards.mjs cache "$MUTATION_SHARD"
+
       # `--no-install`: the sweep runs the Stryker that `npm ci` installed, and
       # a job that lost that step stops here, where npx alone would fetch
       # whatever the registry has under the name. `.npmrc` says the same for
       # every command (tests/npm.test.ts).
-      - name: Full mutation sweep, one shard
+      - name: Mutation sweep, one shard
         run: |
           started=$SECONDS
-          npx --no-install stryker run stryker.shard.config.mjs
+          if [ "$FULL" = "true" ]; then
+            npx --no-install stryker run stryker.shard.config.mjs
+          else
+            npx --no-install stryker run stryker.shard.config.mjs --incremental
+          fi
           echo "{\"seconds\": $((SECONDS - started))}" > "reports/mutation/shard-$MUTATION_SHARD.timing.json"
 
       # A shard's report is read by the merge of its own run, and its minutes
@@ -196,7 +246,7 @@ jobs:
           retention-days: 14
 
   full:
-    name: mutation (full)
+    name: mutation (${{ github.event_name == 'pull_request' && 'incremental' || 'full' }})
     needs: shard
     # Runs when a shard failed too, so the failure is reported as an incomplete
     # sweep rather than as a skipped check.
@@ -222,6 +272,11 @@ jobs:
 
       # The merge scores with Stryker's own metrics library.
       - run: npm ci --ignore-scripts
+
+      # The key the shards restored by, from the same lockfile.
+      - name: Name the toolchain
+        id: toolchain
+        run: echo "key=$(node scripts/mutation-shards.mjs toolchain)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -265,3 +320,17 @@ jobs:
             reports/mutation/index.html
             reports/mutation/mutation.json
           if-no-files-found: ignore
+
+      # Only main's full sweep publishes the file a pull request starts from,
+      # and only where its merge passed: a pull request, a branch's dispatch
+      # and the incremental tier never publish one, so no branch can seed the
+      # verdicts another starts from, and an incremental result, derived from a
+      # file and not from the code, is never fed back in. No other step of
+      # any workflow here saves a cache under this key, so what a pull request
+      # restores is what main published.
+      - name: Publish the incremental file
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-incremental-${{ steps.toolchain.outputs.key }}-${{ github.sha }}

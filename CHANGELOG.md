@@ -191,6 +191,16 @@ cannot turn a run red. The family's policy is
   Development tooling only: nothing spec-harness decides or reports
   changed. Upgrading: nothing to do.
 
+- **A pull request's full mutation sweep runs incrementally**, from the
+  file main's last full sweep published, as spec-guard's and spec-graph's
+  do: a mutant whose code and covering tests read as they did keeps its
+  verdict, and the rest run. Main, the schedule and a dispatch still sweep
+  in full, and only main's full sweep publishes the file. A survivor in a
+  module the pull request did not change, which its change made reachable,
+  is found by main's full sweep after the merge (ADR-0010, amended
+  2026-11-13). Development tooling only: nothing spec-harness decides or
+  reports changed. Upgrading: nothing to do.
+
 ### Documentation
 
 - **On Azure Pipelines and Jenkins**, the audit reference's In CI sets

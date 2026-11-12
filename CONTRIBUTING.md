@@ -14,8 +14,9 @@ and the module layout are in [`CLAUDE.md`](CLAUDE.md); the decisions and what
 they cost are in [`docs/adr/`](docs/adr/README.md). Mutation testing runs in
 GitHub Actions, not on a workstation: the core sweep is a CI job on every
 change, and the full sweep runs for a change to what only it reaches
-(below), weekly and on request (Actions, Mutation, Run workflow), in nine
-parallel shards merged into one score.
+(below), incrementally on a pull request and in full on main, weekly and on
+request (Actions, Mutation, Run workflow), in nine parallel shards merged
+into one score.
 
 npm 10, 11 and 12 install the same tree from the lockfile and run the same
 suite. `npm ci` leaves the lockfile as it is under each of them; npm 10's
@@ -37,14 +38,23 @@ The core sweep mutates the pure modules, the list in
 `stryker.core.config.mjs`. The command line, `init`, the server, `round.ts`,
 git and the siblings are mutated by the full sweep alone, and a pull request
 that changes one of them, or what the sweep is made of, runs it: ten more
-checks, and about thirty-five minutes where CI takes fourteen. The files are
-the paths in `.github/workflows/mutation.yml`. A module added to `src/` goes
-into the core sweep's list or into those paths, and `npm test` fails until it
-is in one. Every push to such a pull request runs the sweep again and ends
-the one before it.
+checks. The files are the paths in `.github/workflows/mutation.yml`. A
+module added to `src/` goes into the core sweep's list or into those paths,
+and `npm test` fails until it is in one. Every push to such a pull request
+runs the sweep again and ends the one before it.
 
-The check `mutation (full)` ends with a summary, *Undetected mutants new
-against main*: the mutants of the pull request, merged into main, that no
+On a pull request the sweep is incremental: it starts from the file main's
+last full sweep published, keeps the verdict of every mutant whose code and
+covering tests read as they did there, and runs the rest. So it reads the
+pull request's own mutants, and those its changed tests cover, but not a
+survivor in a module it did not change that its change made reachable:
+main's full sweep after the merge finds that one. A pull request that moves
+Stryker or vitest finds no file published by its toolchain and sweeps every
+mutant (ADR-0010, amended 2026-11-13).
+
+The check `mutation (incremental)` on a pull request, `mutation (full)` on
+main, ends with a summary, *Undetected mutants new against main*: the
+mutants of the pull request, merged into main, that no
 test detects and that main's newest full sweep did not have. The sweep does
 not fail for them, so the pull request answers for them. Its description
 lists each one the summary names and says what it is:
