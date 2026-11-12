@@ -824,9 +824,9 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
       ].join('\n'),
     );
     // A spec-brief that runs and cannot say which briefs it could not read
-    // whole, said once, under its line (ADR-0005). SIBLINGS holds it, so
-    // its row is there.
-    const lister = rows.find((row) => row.tool === 'spec-brief')!;
+    // whole, said once, under its line (ADR-0005). The rows are SIBLINGS',
+    // in its order, so its row is at its place there.
+    const lister = rows[SIBLINGS.indexOf('spec-brief')]!;
     const unreported = lister.state === 'found' && lister.version !== null && !reportsUnread(lister.version) ? unreportedSaid(lister.version) : null;
     for (const row of rows) {
       io.stdout.write(`${row.state.padEnd(8)}  ${row.tool.padEnd(10)}  ${row.detail}\n`);

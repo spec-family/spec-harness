@@ -599,7 +599,10 @@ describe('the siblings', () => {
     expect(before).toMatch(/\nfound {5}spec-brief {2}[^\n]*\(0\.14\.2\)\n {22}note: spec-brief 0\.14\.2 does not say /);
     const current = repository({}, null);
     installFake(current.root, 'spec-brief', JSON.stringify({ version: '0.15.0' }));
-    expect(said((await cli(['doctor'], current.root)).stdout)).toBe(0);
+    const now = (await cli(['doctor'], current.root)).stdout;
+    expect(said(now)).toBe(0);
+    // Nothing at all under its line: the next is spec-graph's.
+    expect(now).toMatch(/\nfound {5}spec-brief {2}[^\n]*\(0\.15\.0\)\n\S+ +spec-graph {2}/);
     const outdated = repository({}, null);
     installFake(outdated.root, 'spec-brief', JSON.stringify({ version: '0.11.0' }));
     expect(said((await cli(['doctor'], outdated.root)).stdout)).toBe(0);
