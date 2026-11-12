@@ -369,9 +369,21 @@ export function isUncommitted(sha: string): boolean {
  * The commit that last changed one line of a file, as of a revision, or of
  * the working tree when `ref` is `null` - where a line nobody committed yet
  * belongs to the all-zero commit.
+ *
+ * The commit it names is the one whose signature a ruling is verified by,
+ * so nothing the checkout configures may move a line to another commit
+ * (ADR-0006). `blame.ignoreRevsFile` passes a listed commit's lines to the
+ * commits before it; a textconv filter, configured in the checkout and
+ * named for the file in `.git/info/attributes`, can make a widened row read
+ * as the row a person signed, and blame follows it unless told not to.
+ * Measured with Git for Windows 2.56.0, both credited an unsigned commit's
+ * widened ruling to the signed commit before it. The option empties the
+ * list the configuration made, as `-c blame.ignoreRevsFile=` does not:
+ * git keeps the configured names sorted, so the empty one that is to clear
+ * the list is read before the names it was to clear.
  */
 export async function blameLine(ref: string | null, path: string, line: number, cwd: string): Promise<string | null> {
-  const run = await git(['blame', '--porcelain', '-L', `${line},${line}`, ...(ref === null ? [] : [ref]), '--', path], cwd);
+  const run = await git(['blame', '--porcelain', '--no-ignore-revs-file', '--no-textconv', '-L', `${line},${line}`, ...(ref === null ? [] : [ref]), '--', path], cwd);
   // A blame that fails prints nothing on stdout, which names no commit. Its
   // output opens with the commit, so the anchor is equivalent to its mutant.
   const sha = /^([0-9a-f]{40,64}) /.exec(run.stdout)?.[1];
@@ -384,13 +396,27 @@ export type Signature =
   | { readonly good: false; readonly principal: null; readonly detail: string };
 
 /**
+ * The program git verifies each kind of signature with, as git names it
+ * where nothing is configured (git-config(1), gpg.program and
+ * gpg.<format>.program), set on the command line, which git reads after
+ * every configuration file. git runs the program a signature's own kind
+ * names, whatever `gpg.format` says, and believes what the program prints:
+ * measured with Git for Windows 2.56.0, a script configured in the
+ * checkout as `gpg.ssh.program`, or as `gpg.program` for a commit carrying
+ * an OpenPGP block, printed a good signature by the agent's principal and
+ * git exited 0 (ADR-0006). The program is the one on PATH, as git finds
+ * it; a host whose PATH the agent can change is outside what this guards.
+ */
+const SIGNATURE_PROGRAMS: readonly string[] = ['-c', 'gpg.ssh.program=ssh-keygen', '-c', 'gpg.program=gpg', '-c', 'gpg.x509.program=gpgsm'];
+
+/**
  * Whether a commit carries a good SSH signature by a principal in the given
  * allowed-signers file. The file is passed in, never read from the commit's
  * own tree: a round cannot vouch for itself (ADR-0006).
  */
 export async function verifyCommit(sha: string, allowedSignersFile: string, cwd: string): Promise<Signature> {
   const run = await git(
-    ['-c', `gpg.ssh.allowedSignersFile=${allowedSignersFile}`, '-c', 'gpg.format=ssh', 'verify-commit', '--raw', sha],
+    [...SIGNATURE_PROGRAMS, '-c', `gpg.ssh.allowedSignersFile=${allowedSignersFile}`, '-c', 'gpg.format=ssh', 'verify-commit', '--raw', sha],
     cwd,
   );
   const text = `${run.stderr}\n${run.stdout}`;

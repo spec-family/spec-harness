@@ -139,6 +139,33 @@ counts would need a rule of its own. The README's section on rulings says
 what a ruling proves, and that a second person deciding is the forge's
 review to require, as for any change.
 
+*Amended 2026-11-12.* **Git's configuration in the checkout cannot vouch
+for a ruling.** An agent with a shell in the checkout can write its
+`.git/config`, and git believes what that configuration has it run. Three
+settings each made an unsigned ruling count, measured with Git for Windows
+2.56.0 in round 29:
+
+- `gpg.ssh.program`, or `gpg.program` for a commit carrying an OpenPGP
+  block, or `gpg.x509.program` for an X.509 one, set to a script that
+  prints a good signature by any principal and exits 0. git runs the
+  program the signature's own kind names, whatever `gpg.format` says.
+- `blame.ignoreRevsFile` listing the unsigned commit that widened a signed
+  row: blame passed the row to the signed commit before it.
+- A textconv filter named for the brief in `.git/info/attributes` that
+  reads the widened row as the row the person signed: blame followed it.
+
+`verifyCommit` sets the three programs on the command line to the names git
+uses where nothing is configured, `ssh-keygen`, `gpg` and `gpgsm`, which git
+reads after every configuration file; `blameLine` passes
+`--no-ignore-revs-file` and `--no-textconv`. `-c blame.ignoreRevsFile=`
+does not empty the list as git-config(1) has an empty name do, because git
+keeps the configured names sorted and reads the empty one first.
+
+What this leaves trusted is said where rulings are described: the program
+on PATH, which git finds by its name, and the host the check runs on. A
+check in a fresh checkout in CI, where the agent had no shell, trusts no
+configuration the round wrote.
+
 ## Consequences
 
 No new format, service or network: git, OpenSSH 8.1 or later (2019), and an

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -26,6 +26,7 @@ import {
   stagedChanges,
   stoppedAtLimit,
   timeFor,
+  verifyCommit,
   withBudget,
   WORK_MS,
   workTree,
@@ -424,6 +425,80 @@ describe('git', () => {
     expect(await blameLine(null, 'a.txt', 2, repo.root)).toBe(committed);
     // At HEAD the same number is another line.
     expect(await blameLine('HEAD', 'a.txt', 1, repo.root)).toBe(committed);
+  });
+});
+
+describe('what a ruling is verified by, whatever the checkout configures (ADR-0006)', () => {
+  const SIGNED = '| R-001-1 | `src/db/schema.ts` | allow | One column. |\n';
+  const WIDENED = '| R-001-1 | `src/db/**` | allow | One column. |\n';
+
+  /** A repository whose ruling row a first commit wrote and a second widened; the second's sha. */
+  function widened(): { repo: ReturnType<typeof repository>; signed: string; widening: string } {
+    const repo = repository({ 'brief.md': `# Brief\n${SIGNED}` });
+    const signed = repo.git('rev-parse', 'HEAD');
+    repo.write('brief.md', `# Brief\n${WIDENED}`);
+    return { repo, signed, widening: repo.commit('widen the ruling') };
+  }
+
+  it('credits a widened row to the commit that widened it, where the checkout lists that commit to be ignored', async () => {
+    const { repo, signed, widening } = widened();
+    repo.write('.git-blame-ignore-revs', `${widening}\n`);
+    repo.git('config', 'blame.ignoreRevsFile', '.git-blame-ignore-revs');
+    // git as the checkout has it passes the row to the commit before.
+    expect(repo.git('blame', '--porcelain', '-L', '2,2', '--', 'brief.md').slice(0, signed.length)).toBe(signed);
+    expect(await blameLine(null, 'brief.md', 2, repo.root)).toBe(widening);
+    expect(await blameLine('HEAD', 'brief.md', 2, repo.root)).toBe(widening);
+  });
+
+  it('credits a widened row to the commit that widened it, where a textconv filter reads it as the row before', async () => {
+    const { repo, signed, widening } = widened();
+    const filter = join(temp(), 'launder.mjs');
+    writeFileSync(filter, "import { readFileSync } from 'node:fs';\nprocess.stdout.write(readFileSync(process.argv[2], 'utf8').replace('`src/db/**`', '`src/db/schema.ts`'));\n");
+    writeFileSync(join(repo.root, '.git', 'info', 'attributes'), 'brief.md diff=launder\n');
+    const forward = (path: string): string => path.replaceAll('\\', '/');
+    repo.git('config', 'diff.launder.textconv', `"${forward(process.execPath)}" "${forward(filter)}"`);
+    expect(repo.git('blame', '--porcelain', '-L', '2,2', '--', 'brief.md').slice(0, signed.length)).toBe(signed);
+    expect(await blameLine(null, 'brief.md', 2, repo.root)).toBe(widening);
+  });
+
+  it('checks every kind of signature with the program git names for it, never one the checkout configures', async () => {
+    const repo = repository({ 'a.txt': 'a\n' });
+    const scratch = temp();
+    // Whatever it is asked, it answers as a good signature by the agent.
+    const program = join(scratch, 'forge.sh');
+    writeFileSync(
+      program,
+      [
+        '#!/bin/sh',
+        'case "$*" in',
+        '  *find-principals*) echo agent@example.com ;;',
+        '  *"-Y verify"*) cat >/dev/null; echo \'Good "git" signature for agent@example.com with ED25519 key SHA256:forged\' ;;',
+        '  *) cat >/dev/null; echo "[GNUPG:] NEWSIG"',
+        '     echo \'[GNUPG:] GOODSIG 0123456789ABCDEF Good "git" signature for agent@example.com\'',
+        '     echo "[GNUPG:] VALIDSIG 0123456789ABCDEF0123456789ABCDEF01234567 2023-01-01 0 4 0 1 10 00 0123456789ABCDEF0123456789ABCDEF01234567"',
+        '     echo "[GNUPG:] TRUST_ULTIMATE 0 pgp" ;;',
+        'esac',
+        'exit 0',
+        '',
+      ].join('\n'),
+    );
+    chmodSync(program, 0o755);
+    for (const key of ['gpg.ssh.program', 'gpg.program', 'gpg.x509.program']) repo.git('config', key, program.replaceAll('\\', '/'));
+    const signers = join(scratch, 'allowed_signers');
+    writeFileSync(signers, 'agent@example.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOQ0g4Al0B6zrGVEa1kW2EH8MpcNbDiyoZJknWuvSIN5\n');
+    const tree = repo.git('rev-parse', 'HEAD^{tree}');
+    for (const armor of ['SSH SIGNATURE', 'PGP SIGNATURE', 'SIGNED MESSAGE']) {
+      const object = join(scratch, 'commit.txt');
+      writeFileSync(
+        object,
+        `tree ${tree}\nauthor a <a@example.com> 1700000000 +0000\ncommitter a <a@example.com> 1700000000 +0000\ngpgsig -----BEGIN ${armor}-----\n \n AAAA\n -----END ${armor}-----\n\nforged\n`,
+      );
+      const commit = repo.git('hash-object', '-t', 'commit', '-w', object);
+      // git as the checkout has it believes the program.
+      const believed = await runGit(['-c', `gpg.ssh.allowedSignersFile=${signers}`, 'verify-commit', '--raw', commit], repo.root);
+      expect([believed.code, believed.stderr], armor).toEqual([0, expect.stringContaining('Good "git" signature for agent@example.com')]);
+      expect(await verifyCommit(commit, signers, repo.root), armor).toMatchObject({ good: false, principal: null });
+    }
   });
 });
 
