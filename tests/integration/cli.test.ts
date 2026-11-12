@@ -408,7 +408,7 @@ describe('the configuration', () => {
     const unknown = await cli(['guard', 'a.ts'], repo.root);
     expect(unknown.code).toBe(2);
     expect(unknown.stderr).toBe(
-      'spec-harness: .spec-harness.json: unknown key "outofscope"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport\n',
+      'spec-harness: .spec-harness.json: unknown key "outofscope"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport, protectHarness\n',
     );
     repo.write('.spec-harness.json', '{ "base": ');
     const broken = await cli(['guard', 'a.ts'], repo.root);

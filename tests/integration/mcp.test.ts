@@ -158,7 +158,7 @@ describe('the tools', () => {
     expect(outcome.text.split('\n')).toEqual([
       'deny: brief 001 does not empower this round to change src/db/schema.ts (protectedFiles: src/db/**). Next: if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool',
       "allow: src/auth/a.ts is in brief 001's scope (src/auth/**)",
-      "warn: README.md is outside brief 001's scope, which covers src/auth/**. Next: if the round needs it, say so in briefs/001_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope",
+      "warn: README.md is outside brief 001's scope, which covers src/auth/**. Next: if the round needs it, say so in briefs/001_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope that the round commits",
     ]);
     const decisions = (outcome.structured as { decisions: { verdict: string }[] }).decisions;
     expect(decisions.map((d) => d.verdict)).toEqual(['deny', 'allow', 'warn']);

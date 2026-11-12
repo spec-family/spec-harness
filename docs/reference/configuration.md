@@ -14,4 +14,5 @@
 | `assertions.premises` | `The Defect, Measured`, `Premises`, `Preconditions` | Sections whose assertions state what was true before the round. |
 | `probes.runs`, `probes.timeout` | `2`, `600` | Runs per probe, and seconds per run. |
 | `tools` | found in `node_modules` | A sibling's command by name: `{ "spec-brief": ["node", "path/to/spec-brief.js"] }`. |
+| `protectHarness` | `null` | `"ask"` or `"deny"`: a write to a file the guard runs on or takes its trust from, `.git/**`, `.spec-harness.json`, spec-brief's configuration, Claude Code's project settings, `node_modules/@spec-family/**` and the allowed-signers file, is put to the person or refused, whatever the brief's scope says ([`guard`](guard.md)). `null` decides it by the brief, as any other file. |
 | `turnReport` | `false` | `true`: as each of Claude Code's turns ends, the hook reports every changed path the brief protects or that is outside its scope, to Claude as the next turn begins ([`guard` and the hooks](guard.md)). `init` writes the entry that runs it where it is on. |

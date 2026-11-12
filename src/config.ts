@@ -11,6 +11,9 @@ import { templateError } from './branch.js';
 
 export type OutOfScope = 'warn' | 'ask' | 'deny';
 
+/** What a write to a file the harness's guard runs on gets, where the repository asks for more than the scope gives it. */
+export type ProtectHarness = 'ask' | 'deny';
+
 export interface HarnessConfig {
   /** Branch-name templates that carry the active brief's id (ADR-0004). */
   readonly branches: readonly string[];
@@ -54,6 +57,12 @@ export interface HarnessConfig {
    * and `init` writes the entry that runs it only where it is on (ADR-0005).
    */
   readonly turnReport: boolean;
+  /**
+   * Whether a write to a file the guard runs on or takes its trust from
+   * (guard.ts, HARNESS_FILES) is put to the person or refused; `null`, as
+   * by default, decides it by the brief as any other file (ADR-0005).
+   */
+  readonly protectHarness: ProtectHarness | null;
 }
 
 export type SiblingName = 'spec-brief' | 'spec-graph' | 'spec-guard';
@@ -88,6 +97,7 @@ export const DEFAULT_CONFIG: HarnessConfig = {
   probes: { runs: 2, timeout: 600 },
   tools: { 'spec-brief': null, 'spec-graph': null, 'spec-guard': null },
   turnReport: false,
+  protectHarness: null,
 };
 
 export class ConfigError extends Error {
@@ -138,7 +148,7 @@ function nonEmpty(value: unknown, where: string): string {
 /** Validates a parsed configuration and fills in every default. */
 export function parseConfig(raw: unknown, file = CONFIG_FILE): HarnessConfig {
   if (!isObject(raw)) throw new ConfigError(`${file} must hold a JSON object`);
-  checkKeys(raw, ['$schema', 'branches', 'outOfScope', 'base', 'rulings', 'dependencies', 'context', 'assertions', 'probes', 'tools', 'turnReport'], file);
+  checkKeys(raw, ['$schema', 'branches', 'outOfScope', 'base', 'rulings', 'dependencies', 'context', 'assertions', 'probes', 'tools', 'turnReport', 'protectHarness'], file);
 
   let branches = DEFAULT_CONFIG.branches;
   if (raw['branches'] !== undefined) {
@@ -240,5 +250,8 @@ export function parseConfig(raw: unknown, file = CONFIG_FILE): HarnessConfig {
   const turnReport = raw['turnReport'] ?? DEFAULT_CONFIG.turnReport;
   if (typeof turnReport !== 'boolean') throw new ConfigError(`${file}: "turnReport" must be true or false`);
 
-  return { branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport };
+  const protectHarness = raw['protectHarness'] ?? DEFAULT_CONFIG.protectHarness;
+  if (protectHarness !== null && protectHarness !== 'ask' && protectHarness !== 'deny') throw new ConfigError(`${file}: "protectHarness" must be "ask", "deny" or null`);
+
+  return { branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport, protectHarness };
 }

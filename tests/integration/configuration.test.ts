@@ -24,7 +24,7 @@ const FILES = { [BRIEF_FILE]: brief({ affected: ['src/app/**'], protected: ['src
 
 /** What each configuration that does not load is said to be, as every command says it. */
 const BROKEN: readonly (readonly [string, string])[] = [
-  ['{ "outofscope": "warn" }\n', '.spec-harness.json: unknown key "outofscope"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport'],
+  ['{ "outofscope": "warn" }\n', '.spec-harness.json: unknown key "outofscope"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport, protectHarness'],
   ['{ "base": "main",\n', '.spec-harness.json is not valid JSON: '],
   ['{ "outOfScope": "never" }\n', '.spec-harness.json: "outOfScope" must be "warn", "ask" or "deny"'],
 ];

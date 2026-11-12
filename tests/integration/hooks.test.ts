@@ -69,10 +69,23 @@ describe('hook claude', () => {
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
         additionalContext:
-          "spec-harness: README.md is outside brief 001's scope, which covers src/auth/**. Next: if the round needs it, say so in briefs/001_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope.",
+          "spec-harness: README.md is outside brief 001's scope, which covers src/auth/**. Next: if the round needs it, say so in briefs/001_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope that the round commits.",
       },
     });
     expect((await claude(hookInput('PostToolUse', 'Write', { file_path: 'src/auth/a.ts' }))).stdout).toBe('');
+  });
+
+  it('refuses a write to a file the guard runs on where protectHarness says deny, and warns of it where nothing is set', async () => {
+    const guarded = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }) }, { protectHarness: 'deny' });
+    guarded.git('checkout', '-q', '-b', 'brief/001-rotate');
+    for (const path of [join(guarded.root, '.claude', 'settings.json'), join(guarded.root, '.git', 'hooks', 'pre-commit'), '.spec-harness.json']) {
+      const result = await claude(hookInput('PreToolUse', 'Write', { file_path: path }, guarded.root), { cwd: guarded.root });
+      const answer = JSON.parse(result.stdout) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
+      expect(answer.hookSpecificOutput.permissionDecision, path).toBe('deny');
+      expect(answer.hookSpecificOutput.permissionDecisionReason, path).toContain("is a file spec-harness's guard runs on or takes its trust from");
+    }
+    const warned = await claude(hookInput('PostToolUse', 'Write', { file_path: '.claude/settings.local.json' }));
+    expect(JSON.parse(warned.stdout).hookSpecificOutput.additionalContext).toContain('set "protectHarness" to "ask" or "deny" in .spec-harness.json');
   });
 
   it('ignores a tool that writes no file, without asking spec-brief', async () => {

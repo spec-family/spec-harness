@@ -394,8 +394,9 @@ async function turnReport(options: Options, io: CliIO, root: string, cwd: string
     }
     if (brief === null) return null;
     const [changed, { decide }] = await Promise.all([changedPaths(workspace.root), import('./guard.js')]);
-    const outOfScope = workspace.config.outOfScope;
-    const said = changed.map((path) => decide({ path, given: path, brief, rulings: [], outOfScope })).filter((decision) => decision.verdict !== 'allow');
+    const { outOfScope, protectHarness } = workspace.config;
+    const signers = workspace.config.rulings.allowedSigners;
+    const said = changed.map((path) => decide({ path, given: path, brief, rulings: [], outOfScope, protectHarness, signers })).filter((decision) => decision.verdict !== 'allow');
     if (said.length === 0) return null;
     const lines = said.slice(0, REPORTED).map((decision) => `- ${decision.message}. Next: ${decision.hint}.`);
     const more = said.length > REPORTED ? [`- and ${said.length - REPORTED} more: spec-harness guard <path> says each`] : [];

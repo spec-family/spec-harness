@@ -52,7 +52,7 @@ scope's code to, and the documents the brief cites. Read it before the code.
   Then wait. A person rules, and signs the ruling; only a signed ruling lets
   the guard pass the file.
 - A file outside the scope that the round genuinely needs: say so in the
-  brief and tell the person. The archive reports every such file.
+  brief and tell the person. The archive reports every such file it commits.
 - Adding a dependency is a decision, and so is allowing one to run install
   scripts: name it in the brief and say why.
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { OutOfScope } from '../../src/config.js';
-import { decide, decideWritten, DOTS_MEND, heldBy, heldForDots, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
+import type { OutOfScope, ProtectHarness } from '../../src/config.js';
+import { decide, decideWritten, DOTS_MEND, HARNESS_FILES, harnessFile, heldBy, heldForDots, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
 import type { BriefRow } from '../../src/types.js';
 import { row } from './helpers.js';
 
@@ -10,7 +10,10 @@ const brief = row({
   protectedFiles: ['src/db/schema.ts', 'migrations/**'],
 });
 
-function check(path: string | null, options: { brief?: BriefRow | null; rulings?: VerifiedRuling[]; outOfScope?: OutOfScope; noBrief?: string } = {}) {
+function check(
+  path: string | null,
+  options: { brief?: BriefRow | null; rulings?: VerifiedRuling[]; outOfScope?: OutOfScope; noBrief?: string; protectHarness?: ProtectHarness; signers?: string } = {},
+) {
   const input: GuardInput = {
     path,
     given: path ?? '/elsewhere/x.ts',
@@ -18,6 +21,8 @@ function check(path: string | null, options: { brief?: BriefRow | null; rulings?
     rulings: options.rulings ?? [],
     outOfScope: options.outOfScope ?? 'warn',
     ...(options.noBrief === undefined ? {} : { noBrief: options.noBrief }),
+    ...(options.protectHarness === undefined ? {} : { protectHarness: options.protectHarness }),
+    ...(options.signers === undefined ? {} : { signers: options.signers }),
   };
   return decide(input);
 }
@@ -90,7 +95,7 @@ describe('the guard', () => {
     expect(warned).toMatchObject({ verdict: 'warn', reason: 'out-of-scope', because: [] });
     expect(warned.message).toBe("README.md is outside brief 012's scope, which covers src/auth/**, tests/auth/**");
     expect(warned.hint).toBe(
-      'if the round needs it, say so in briefs/012_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope',
+      'if the round needs it, say so in briefs/012_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope that the round commits',
     );
     expect(check('README.md', { outOfScope: 'ask' })).toMatchObject({ verdict: 'ask', reason: 'out-of-scope', hint: warned.hint });
     const denied = check('README.md', { outOfScope: 'deny' });
@@ -98,6 +103,55 @@ describe('the guard', () => {
     expect(denied.hint).toBe(
       `add it to affectedFiles in briefs/012_rotate-tokens.md if the round needs it, which is a change the person who approved the brief must see; or ${ESCALATE}`,
     );
+  });
+
+  it('knows the files it runs on or takes its trust from, and the allowed-signers file the configuration names', () => {
+    expect(HARNESS_FILES).toEqual(['.git/**', '.spec-harness.json', '.spec-brief.json', 'spec-brief.json', '.claude/settings.json', '.claude/settings.local.json', 'node_modules/@spec-family/**']);
+    expect(harnessFile('.git/hooks/pre-commit')).toBe('.git/**');
+    expect(harnessFile('.git/spec-harness/answers/x.json')).toBe('.git/**');
+    expect(harnessFile('node_modules/@spec-family/spec-harness/dist/guard.js')).toBe('node_modules/@spec-family/**');
+    expect(harnessFile('.claude/settings.local.json')).toBe('.claude/settings.local.json');
+    expect(harnessFile('.github/allowed_signers')).toBe('.github/allowed_signers');
+    expect(harnessFile('.github/allowed_signers', 'keys/signers')).toBeNull();
+    expect(harnessFile('keys/signers', 'keys/signers')).toBe('keys/signers');
+    for (const path of ['.github/workflows/ci.yml', '.claude/commands/x.md', 'node_modules/left-pad/index.js', 'src/.git-like.ts', '.gitignore']) expect(harnessFile(path), path).toBeNull();
+  });
+
+  it('decides a write to such a file by the brief, saying what it is, where protectHarness is not set', () => {
+    const warned = check('.claude/settings.json');
+    expect(warned).toMatchObject({ verdict: 'warn', reason: 'out-of-scope', message: ".claude/settings.json is outside brief 012's scope, which covers src/auth/**, tests/auth/**" });
+    expect(warned.hint).toBe(
+      `it is a file spec-harness's guard runs on or takes its trust from (.claude/settings.json), and a round has no reason to write it: set "protectHarness" to "ask" or "deny" in .spec-harness.json to have the guard hold such a write`,
+    );
+    expect(check('.claude/settings.json', { outOfScope: 'deny' }).hint).toBe(check('README.md', { outOfScope: 'deny' }).hint.replace('README.md', '.claude/settings.json'));
+    expect(check('.spec-harness.json', { brief: row({ affectedFiles: ['**'], protectedFiles: [] }) })).toMatchObject({ verdict: 'allow', reason: 'in-scope' });
+  });
+
+  it('puts such a write to the person, or refuses it, as protectHarness says, before the scope, unless a signed ruling allows it', () => {
+    const asked = check('.git/hooks/pre-commit', { protectHarness: 'ask' });
+    expect(asked).toEqual({
+      path: '.git/hooks/pre-commit',
+      verdict: 'ask',
+      reason: 'harness-file',
+      because: ['.git/**'],
+      message: ".git/hooks/pre-commit is a file spec-harness's guard runs on or takes its trust from (.git/**), which a round does not change",
+      hint: `change it outside the round, where the person sees the change; or ${ESCALATE}`,
+    });
+    const scoped = row({ affectedFiles: ['**'], protectedFiles: [] });
+    expect(check('.spec-harness.json', { brief: scoped, protectHarness: 'deny' })).toMatchObject({ verdict: 'deny', reason: 'harness-file', because: ['.spec-harness.json'] });
+    expect(check('keys/signers', { brief: scoped, protectHarness: 'deny', signers: 'keys/signers' })).toMatchObject({ verdict: 'deny', because: ['keys/signers'] });
+    expect(check('README.md', { protectHarness: 'deny' })).toMatchObject({ verdict: 'warn', reason: 'out-of-scope' });
+    const ruled = check('.spec-harness.json', { protectHarness: 'deny', rulings: [{ id: 'R-012-1', paths: ['.spec-harness.json'], signer: 'p@example.com' }] });
+    expect(ruled).toEqual({
+      path: '.spec-harness.json',
+      verdict: 'allow',
+      reason: 'ruled',
+      because: ['R-012-1'],
+      message: ".spec-harness.json is a file spec-harness's guard runs on, and ruling R-012-1, signed by p@example.com, allows it",
+      hint: 'keep the change to what the ruling allows',
+    });
+    // No brief, no round: nothing is held, as for any other file.
+    expect(check('.spec-harness.json', { brief: null, protectHarness: 'deny' })).toMatchObject({ verdict: 'allow', reason: 'no-brief' });
   });
 
   it('says a brief with no scope declares none, and names a scope pattern it could not read', () => {
