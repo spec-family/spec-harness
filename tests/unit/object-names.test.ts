@@ -146,7 +146,7 @@ describe('the tool a Claude Code hook names', () => {
       const input = `{ "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": "/repo", "tool_input": { "${field}": "/repo/secret.ts", "file_path": "/repo/a.ts" } }`;
       expect(parseClaudeHook(input), field).toEqual({ event: 'PreToolUse', tool: 'Write', cwd: '/repo', paths: ['/repo/a.ts'], session: null, call: null });
       const only = `{ "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": "/repo", "tool_input": { "${field}": { "file_path": "/repo/secret.ts" } } }`;
-      expect(parseClaudeHook(only), field).toEqual({ event: 'PreToolUse', tool: 'Write', cwd: '/repo', paths: [], session: null, call: null });
+      expect(parseClaudeHook(only), field).toEqual({ error: 'the hook input names Write and no file it writes, as a string in file_path, path or notebook_path' });
     }
   });
 });
