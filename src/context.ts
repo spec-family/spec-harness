@@ -116,6 +116,12 @@ export interface ContextInput {
   /** The rules in force for the scope, none because spec-guard reads no specification, or why they could not be read. */
   readonly rules: Rules;
   readonly rulings: readonly RulingInForce[];
+  /**
+   * The rulings that allow something and do not count, each with why; none
+   * where not given. Left out, "Rulings in force: none" read as a brief
+   * with no ruling, beside a row the person had written and not signed.
+   */
+  readonly unverified?: readonly { readonly id: string; readonly reason: string }[] | undefined;
   readonly branch: string | null;
   readonly base: string | null;
   readonly budget: number;
@@ -281,6 +287,7 @@ export function renderContext(input: ContextInput): ContextPacket {
   // nothing. The paths share a line, so the note is in parentheses, closed
   // before the next path.
   const unreadableRulingPaths: UnreadableRulingPath[] = [];
+  const unverified = input.unverified ?? [];
   const rulings =
     input.rulings.length === 0
       ? '- none'
@@ -329,6 +336,7 @@ export function renderContext(input: ContextInput): ContextPacket {
     'Rulings in force:',
     rulings,
     '',
+    ...(unverified.length === 0 ? [] : ['Rulings that do not count, which allow nothing:', ...unverified.map((ruling) => `- ${ruling.id}: ${ruling.reason}`), '']),
   ].join('\n');
 
   const waiting = input.dependencies.map((dependency) => {

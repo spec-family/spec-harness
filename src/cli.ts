@@ -21,10 +21,11 @@
 import { SiblingOutputError, type ActiveBrief } from './briefs.js';
 import { CONFIG_FILE, ConfigError, SIBLINGS, SPEC_BRIEF_CONFIGS } from './config.js';
 import type { ClaudeCodeWiring } from './configure.js';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig, localSpelling, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
-import { changedPaths, GitError, show, stagedChanges, withBudget } from './git.js';
+import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig, localSpelling, mainWorkTree, outsideEvery, reachedBy, readText, StateError, takeCall, writesOnly } from './fs.js';
+import { changedPaths, GitError, show, signingConfig, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
 import { afterResponse, callFile, callRecord, claudeResponse, codexResponse, copilotResponse, gitResponse, heldResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, otherAgent, parseClaudeHook, parseCodexHook, parseCopilotHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type Agent, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
@@ -685,6 +686,25 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
 /* ------------------------------------------------------------------ doctor */
 
 /**
+ * The key git signs every commit here with, where it signs every commit
+ * with an SSH key: the key `user.signingkey` names, after `key::` or in the
+ * public key's file, beside a private key's or named itself; `null` where
+ * git signs no commit unasked, signs another way, or the key cannot be read.
+ * A `~` is the home git reads it as, `HOME`, which Git for Windows sets
+ * where it is not, as the account's.
+ */
+async function signingKey(root: string, env: CliIO['env'], read: (text: string) => { readonly keyType: string; readonly key: string } | null): Promise<{ readonly keyType: string; readonly key: string } | null> {
+  const { every, format, key } = await signingConfig(root);
+  if (!every || format !== 'ssh' || key === null) return null;
+  if (key.startsWith('key::')) return read(key.slice('key::'.length));
+  const path = key.startsWith('~') ? join(env['HOME'] ?? homedir(), key.slice(1)) : resolve(root, key);
+  // The public key beside a private key's path; where none stands there,
+  // the path is read as the public key's own.
+  const text = (await readText(`${path}.pub`)) ?? (await readText(path));
+  return text === null ? null : read(text);
+}
+
+/**
  * The base, and the allowed-signers file as it is on it: the file waits on
  * the base, and the two on nothing else doctor asks. A --base given nothing
  * is no base, said as the brief's is, in the report.
@@ -741,7 +761,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // What doctor alone runs of them, loaded before anything is asked: the
   // five things below are asked at once, and none waits on a module.
   const [configure, round, setup, signing] = await Promise.all([import('./configure.js'), import('./round.js'), import('./setup.js'), import('./signers.js')]);
-  const { describeBase, describeClaudeCode, describeClaudeRelease, describeGitHook, describeHooksOff, describeInstalls, describePlugin, describePluginAhead, describePluginScripts, describePresence, describeSignerKeys, describeSignerProblem, describeSigners, earlierTool, guardSwitchedOff, guardWired, NO_SESSION_START, NO_TURN_END, wiringState } = configure;
+  const { describeBase, describeClaudeCode, describeClaudeRelease, describeGitHook, describeHooksOff, describeInstalls, describePlugin, describePluginAhead, describePluginScripts, describePresence, describeSignerKeys, describeSignerProblem, describeSigners, describeSigningEveryCommit, signingKeyOf, earlierTool, guardSwitchedOff, guardWired, NO_SESSION_START, NO_TURN_END, wiringState } = configure;
   const { closedRound, describeClosedRound, diagnoseBrief, specBriefPlugin } = round;
   const { gitHook } = setup;
   const { notFido2, readAllowedSigners } = signing;
@@ -802,7 +822,10 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   // agent cannot use, and a PIV key reads as a plain one (ADR-0006).
   const read = readAllowedSigners(signersText ?? '');
   const plain = notFido2(read.signers);
-  const signerNotes = [describeSignerKeys(plain), ...read.problems.map(describeSignerProblem)].filter((note): note is string => note !== null);
+  // And whether git signs every commit here with one of them, which makes
+  // every commit an agent makes under the account a signed one (ADR-0006).
+  const everyCommit = describeSigningEveryCommit(read.signers, await signingKey(workspace.root, io.env, signingKeyOf));
+  const signerNotes = [describeSignerKeys(plain), everyCommit, ...read.problems.map(describeSignerProblem)].filter((note): note is string => note !== null);
   const plugin = answerOf(pluginAsked);
   // The plugin and init's entries both on: Claude Code runs every guard twice
   // and registers the server twice (ADR-0012).

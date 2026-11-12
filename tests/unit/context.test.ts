@@ -153,6 +153,29 @@ describe('the contract and the scope', () => {
     expect(scope).toContain('May write:\n- nothing declared: every write is outside the scope\n');
     expect(scope).toContain('Must not change without a ruling:\n- nothing declared\n');
     expect(scope).toContain('Rulings in force:\n- none\n');
+    expect(scope).not.toContain('do not count');
+  });
+
+  it('names each ruling that allows something and does not count, with why, beside those in force', () => {
+    const unverified = [
+      { id: 'R-012-1', reason: 'its row is not committed' },
+      { id: 'R-012-2', reason: 'commit 0123456789ab last changed its row, and it is signed with ED25519 key SHA256:x, which no allowed signer is' },
+    ];
+    const scope = section(renderContext(input({ unverified })).markdown, 'Scope, as the guard reads it');
+    expect(scope).toContain(
+      [
+        'Rulings in force:',
+        '- none',
+        '',
+        'Rulings that do not count, which allow nothing:',
+        '- R-012-1: its row is not committed',
+        '- R-012-2: commit 0123456789ab last changed its row, and it is signed with ED25519 key SHA256:x, which no allowed signer is',
+        // A blank line ends the list, as it ends each list of the section.
+        '',
+        '',
+      ].join('\n'),
+    );
+    expect(section(renderContext(input({ unverified: [] })).markdown, 'Scope, as the guard reads it')).not.toContain('do not count');
   });
 
   it('names each pattern the guard cannot read, with spec-core\'s reason, and lists the rest as before', () => {

@@ -3,8 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DependencyChange, InstallScriptChange } from '../../src/manifests.js';
 import type { Finding } from '../../src/types.js';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-import { brief, BRIEF_FILE, cleanup, cli, guardCannotRead, parsed, repository, siblings, SPEC_BRIEF, temp, write, type Repository } from './helpers.js';
+import { brief, BRIEF_FILE, cleanup, cli, git, guardCannotRead, parsed, repository, siblings, SPEC_BRIEF, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -275,6 +276,26 @@ describe('audit of a round', () => {
     const nothing = await cli(['audit', '--require-measured', '--base', 'HEAD', '--format', 'json'], r.root);
     expect(nothing.code).toBe(1);
     expect(parsed<Report>(nothing).findings.find((f) => f.rule === 'unmeasured')?.severity).toBe('error');
+  });
+
+  it('notes a history cut short, where the merge base was read in it', async () => {
+    const origin = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }), 'src/a.ts': 'a\n' });
+    // A commit before the base's tip, which two commits from the round's tip leave out.
+    origin.write('README.md', 'x\n');
+    origin.commit('the base moves on');
+    origin.git('checkout', '-q', '-b', 'brief/001-x');
+    origin.write('src/a.ts', 'b\n');
+    origin.commit('the round');
+    const clone = join(temp(), 'clone');
+    git(temp(), 'clone', '-q', '--depth', '2', '--no-single-branch', '--branch', 'brief/001-x', pathToFileURL(origin.root).href, clone);
+    const report = parsed<Report>(await cli(['audit', '--format', 'json'], clone));
+    expect(report.base).not.toBeNull();
+    expect(report.findings.filter((f) => f.rule === 'history-shallow').map((f) => f.severity)).toEqual(['note']);
+    expect(parsed<Report>(await cli(['audit', '--format', 'json'], origin.root)).findings.some((f) => f.rule === 'history-shallow')).toBe(false);
+    // A base that names no commit has no merge base to have read in it.
+    const unmeasured = parsed<Report>(await cli(['audit', '--base', 'nowhere', '--format', 'json'], clone));
+    expect(unmeasured.findings.map((f) => f.rule)).toContain('unmeasured');
+    expect(unmeasured.findings.some((f) => f.rule === 'history-shallow')).toBe(false);
   });
 
   it('runs the goals of a brief whatever its status, as spec-guard runs them only when told to ignore it', async () => {

@@ -22,6 +22,8 @@ import {
   describePluginAhead,
   describePluginScripts,
   describeSignerKeys,
+  describeSigningEveryCommit,
+  signingKeyOf,
   describeSignerProblem,
   describeGraph,
   describeSigners,
@@ -636,6 +638,31 @@ describe('the base init names', () => {
     const detached = { base: null, detail: `no base can be told: ${unrecorded}, and HEAD is detached; ${advice}` };
     expect(chooseBase({ remoteDefault: null, branch: null, branches: named('main') })).toEqual(detached);
     expect(chooseBase({ remoteDefault: null, branch: null, branches: [] })).toEqual(detached);
+  });
+});
+
+describe('a key git signs every commit with (ADR-0006)', () => {
+  const signer = { line: 2, principals: ['p@example.com', 'q@example.com'], keyType: 'ssh-ed25519', key: 'AAAA' };
+
+  it('reads the key user.signingkey names, after key:: or as a public key\'s text', () => {
+    expect(signingKeyOf('ssh-ed25519 AAAA agent@example.com')).toEqual({ keyType: 'ssh-ed25519', key: 'AAAA' });
+    expect(signingKeyOf('  ssh-ed25519 AAAA\n')).toEqual({ keyType: 'ssh-ed25519', key: 'AAAA' });
+    expect(signingKeyOf('ssh-ed25519 \t AAAA')).toEqual({ keyType: 'ssh-ed25519', key: 'AAAA' });
+    // A type that only holds one of the prefixes is none.
+    expect(signingKeyOf('rsa-ssh-x AAAA')).toBeNull();
+    expect(signingKeyOf('ecdsa-sha2-nistp256 BBBB')).toEqual({ keyType: 'ecdsa-sha2-nistp256', key: 'BBBB' });
+    expect(signingKeyOf('sk-ssh-ed25519@openssh.com CCCC')).toEqual({ keyType: 'sk-ssh-ed25519@openssh.com', key: 'CCCC' });
+    for (const text of ['', 'ssh-ed25519', '-----BEGIN OPENSSH PRIVATE KEY-----', '0123ABCD', 'key::']) expect(signingKeyOf(text), text).toBeNull();
+  });
+
+  it('notes it where the allowed signers list it, and nothing for another key, a FIDO2 key or none', () => {
+    expect(describeSigningEveryCommit([signer], { keyType: 'ssh-ed25519', key: 'AAAA' })).toBe(
+      "note: git signs every commit here (commit.gpgsign) with p@example.com,q@example.com's key, line 2 of the allowed signers, so a ruling row an agent working under this account writes and commits is signed by an allowed signer and counts: sign rulings with a key git does not sign every commit with, a FIDO2 key, ssh-keygen -t ed25519-sk, whose signature needs a touch, or turn commit.gpgsign off where agents commit",
+    );
+    expect(describeSigningEveryCommit([signer], { keyType: 'ssh-ed25519', key: 'BBBB' })).toBeNull();
+    expect(describeSigningEveryCommit([signer], { keyType: 'ssh-rsa', key: 'AAAA' })).toBeNull();
+    expect(describeSigningEveryCommit([{ ...signer, keyType: 'sk-ssh-ed25519@openssh.com' }], { keyType: 'sk-ssh-ed25519@openssh.com', key: 'AAAA' })).toBeNull();
+    expect(describeSigningEveryCommit([signer], null)).toBeNull();
   });
 });
 

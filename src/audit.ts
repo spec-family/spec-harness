@@ -107,6 +107,12 @@ export interface AuditInput {
    * spec-brief loads from the earlier package; `false` when not given.
    */
   readonly pluginNamedEarlier?: boolean | undefined;
+  /**
+   * Whether the merge base was read in a history cut short, where git can
+   * find an older one than the whole history has, and the round reads as
+   * more than it changed; `false` when not given.
+   */
+  readonly shallow?: boolean | undefined;
 }
 
 /**
@@ -147,6 +153,7 @@ export const RULES: Readonly<Record<string, string>> = {
   unmeasured: "The round's changes could not be measured from a base.",
   'harness-config-changed': "The work tree's .spec-harness.json changes the base or the allowed signers the round is measured by.",
   'harness-config-unanchored': 'The base and the allowed signers were read from a place the round can change, where --require-measured asks for a ref it cannot.',
+  'history-shallow': 'The merge base was read in a shallow history, where git can find an older one than the whole history has.',
   'archive-unchecked': "spec-brief's archive could not be asked what it would refuse.",
   'assertions-unchecked': "The brief's assertions could not be run.",
   'assertion-unreadable': 'An assertion in the brief spec-guard cannot read, so nothing it states was run.',
@@ -307,6 +314,18 @@ export function audit(input: AuditInput): AuditReport {
         `the round's base and allowed signers were read from ${input.requireMeasured.unanchored}, which the round can change`,
         "pass --base naming the branch rounds merge into as the forge has it, such as --base origin/main, or record the remote's default branch: git remote set-head origin --auto",
         CONFIG_FILE,
+      ),
+    );
+  }
+
+  if (input.shallow === true) {
+    out.push(
+      finding(
+        'history-shallow',
+        'note',
+        "the history is shallow, so the merge base git found can be older than the one the whole history has, and the round's changes measured from it more than it made",
+        'fetch the whole history, as fetch-depth: 0 or GIT_DEPTH: 0 does in CI',
+        brief.file,
       ),
     );
   }

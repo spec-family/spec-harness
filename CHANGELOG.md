@@ -145,6 +145,16 @@ cannot turn a run red. The family's policy is
   line on stderr told them apart. A run that audits a round prints no
   `skipped`, and no other field changes.
 
+- **`history-shallow`**, an audit note, where the merge base was read in a
+  history cut short, as a clone with `--depth` leaves it, where git can find
+  an older merge base than the whole history has. A note fails nothing.
+
+- **doctor notes a key git signs every commit with** (`commit.gpgsign`,
+  an SSH `user.signingkey`) where the allowed-signers file lists it, and it
+  is no FIDO2 key: every commit an agent makes under the account is then
+  signed by an allowed signer, and a ruling row it writes counts. A note,
+  which fails nothing.
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such
@@ -167,6 +177,17 @@ cannot turn a run red. The family's policy is
   hook and the server's `check_path` do. Asked from the main checkout, it
   said the file was outside the repository and allowed it, where the hook
   refused a write to it.
+
+- **A ruling signed with a key no allowed signer is says so.** Its reason
+  was git's first line, `Good "git" signature with ED25519 key ...`, which
+  read as a signature that counts; git's cause, no principal matched, came
+  after. It is now `it is signed with ED25519 key SHA256:..., which no
+  allowed signer is`, in `rulings`, the audit's `ruling-unverified` and the
+  context packet.
+
+- **The context packet names each ruling that does not count**, with why,
+  beneath "Rulings in force", where it said `none` beside a row the person
+  had written and not signed.
 
 ### Changed
 

@@ -499,8 +499,8 @@ describe.skipIf(!hasSshKeygen())('a ruling is a row whose commit a person signed
     expect(state.verified).toEqual([]);
     expect(state.unverified[0]?.reason.startsWith(`commit ${commit.slice(0, 12)} last changed its row, and `)).toBe(true);
     expect(state.unverified[0]?.reason).not.toContain('it is not signed');
-    // What git said, its first line: the key that signed, and no more.
-    expect(state.unverified[0]?.reason).toMatch(/, and Good "git" signature with ED25519 key SHA256:\S+$/);
+    // The key that signed, and that no allowed signer is that key.
+    expect(state.unverified[0]?.reason).toMatch(/, and it is signed with ED25519 key SHA256:\S+, which no allowed signer is$/);
   });
 
   it('reads the signers from the base --base names in guard, context and the server, as rulings does', async () => {

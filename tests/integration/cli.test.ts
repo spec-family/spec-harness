@@ -1768,6 +1768,45 @@ describe('doctor on the rest of what a ruling and a commit need', () => {
     });
   });
 
+  it('notes a key git signs every commit with that the allowed signers list, by the key, and nothing for a FIDO2 key (ADR-0006)', async () => {
+    const repo = repository({ '.github/allowed_signers': `a@example.com namespaces="git" ssh-ed25519 ${KEY}\nb@example.com sk-ssh-ed25519@openssh.com ${KEY}\n` });
+    const note = (out: string): boolean => out.includes('note: git signs every commit here (commit.gpgsign)');
+    expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(false);
+    // Set after the last commit: a commit would be signed with it.
+    repo.git('config', 'commit.gpgsign', 'true');
+    repo.git('config', 'gpg.format', 'ssh');
+    // No key named: git would sign with none of them.
+    const unnamed = await cli(['doctor'], repo.root);
+    expect([unnamed.code, note(unnamed.stdout)]).toEqual([0, false]);
+    repo.git('config', 'user.signingkey', `key::ssh-ed25519 ${KEY} agent@example.com`);
+    const said = await cli(['doctor'], repo.root);
+    expect(said.code).toBe(0);
+    expect(said.stdout).toContain(
+      "        note: git signs every commit here (commit.gpgsign) with a@example.com's key, line 1 of the allowed signers, so a ruling row an agent working under this account writes and commits is signed by an allowed signer and counts: sign rulings with a key git does not sign every commit with, a FIDO2 key, ssh-keygen -t ed25519-sk, whose signature needs a touch, or turn commit.gpgsign off where agents commit\n",
+    );
+    // Not where git signs a commit only when asked.
+    repo.git('config', 'commit.gpgsign', 'false');
+    expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(false);
+    repo.git('config', 'commit.gpgsign', 'true');
+    // From the public key's file, beside a private key's path, or named itself.
+    const keys = temp();
+    write(keys, 'id.pub', `ssh-ed25519 ${KEY} agent@example.com\n`);
+    repo.git('config', 'user.signingkey', join(keys, 'id'));
+    expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(true);
+    repo.git('config', 'user.signingkey', join(keys, 'id.pub'));
+    expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(true);
+    // Under the home directory, as ~ names it to git.
+    repo.git('config', 'user.signingkey', '~/id');
+    expect(note((await cli(['doctor'], repo.root, { env: { HOME: keys } })).stdout)).toBe(true);
+    // A key whose file cannot be read is none.
+    repo.git('config', 'user.signingkey', join(keys, 'gone'));
+    const gone = await cli(['doctor'], repo.root);
+    expect([gone.code, note(gone.stdout)]).toEqual([0, false]);
+    repo.git('config', 'user.signingkey', join(keys, 'id'));
+    repo.git('config', 'gpg.format', 'openpgp');
+    expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(false);
+  });
+
   it('says nothing of the keys when every signer\'s is FIDO2', async () => {
     const repo = repository({ '.github/allowed_signers': `b@example.com sk-ssh-ed25519@openssh.com ${KEY}\n` });
     const result = await cli(['doctor'], repo.root);
