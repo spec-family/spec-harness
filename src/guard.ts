@@ -147,7 +147,7 @@ const GUARDED_FIELDS: readonly string[] = ['protectedFiles', 'affectedFiles'];
 
 /** What spec-brief could not read of a brief that the guard decides a write by: none where it read all of it, or does not say. */
 export function unreadScope(brief: Pick<BriefRow, 'problems'>): BriefProblem[] {
-  return (brief.problems ?? []).filter((problem) => problem.field === null || GUARDED_FIELDS.includes(problem.field));
+  return brief.problems?.filter((problem) => problem.field === null || GUARDED_FIELDS.includes(problem.field)) ?? [];
 }
 
 /** Why a brief's scope cannot be told, in one clause: the first thing spec-brief could not read of it, with its line, and how many more. */
