@@ -233,6 +233,39 @@ describe.skipIf(!hasSshKeygen())('the spec-brief plugin', () => {
     expect(await asked(linked, 'main')).toEqual(expected);
   });
 
+  it('waives a scope change a signed ruling names, or whose every file it let through one allows, and none that let nothing through, or **', async () => {
+    const { root, key } = signedRepository();
+    const text = `${BRIEF}\n## Rulings\n\n| Ruling | Paths | Decision | Note |\n| --- | --- | --- | --- |\n| R-001-1 | \`src/db/schema.ts\` | allow | One column. |\n| R-001-2 | \`src/db/**\` | allow | The store moves. |\n`;
+    write(root, 'briefs/001_remove.md', text);
+    git(root, '-c', 'gpg.format=ssh', '-c', `user.signingkey=${key}`, 'commit', '-q', '-S', '-am', 'rulings R-001-1 and R-001-2');
+    const asked = (warnings: { rule: string; path?: string; paths?: string[] }[], findings: { rule: string; path?: string; paths?: string[] }[] = []) =>
+      waive({ root, brief: { id: '001', file: 'briefs/001_remove.md', text }, findings, warnings, base: 'main', commit: null });
+    // The pattern itself a ruling names.
+    expect(await asked([{ rule: 'scope-changed', path: 'src/db/**', paths: [] }])).toEqual([
+      { rule: 'scope-changed', path: 'src/db/**', reason: 'ruling R-001-2, signed by t@example.com, names src/db/**' },
+    ]);
+    // Every file it let through, allowed; and under --strict, among the refusals.
+    expect(await asked([], [{ rule: 'scope-changed', path: 'src/**', paths: ['src/db/schema.ts'] }])).toEqual([
+      { rule: 'scope-changed', path: 'src/**', reason: 'every file it let through is allowed: ruling R-001-1, signed by t@example.com' },
+    ]);
+    // A file no ruling allows, nothing let through, and a scope that bounds nothing.
+    expect(await asked([{ rule: 'scope-changed', path: 'src/**', paths: ['src/db/schema.ts', 'src/app.ts'] }])).toEqual([]);
+    expect(await asked([{ rule: 'scope-changed', path: 'lib/**', paths: [] }])).toEqual([]);
+    expect(await asked([{ rule: 'scope-changed', path: '**', paths: ['src/db/schema.ts'] }])).toEqual([]);
+    expect(await asked([{ rule: 'scope-changed', paths: ['src/db/schema.ts'] }])).toEqual([]);
+    // Named twice, waived once.
+    expect(await asked([{ rule: 'scope-changed', path: 'src/db/**', paths: [] }], [{ rule: 'scope-changed', path: 'src/db/**', paths: [] }])).toHaveLength(1);
+  });
+
+  it('waives no scope change for a spec-brief that hands no warnings, nor for a ruling nobody signed', async () => {
+    const { root } = signedRepository();
+    const text = `${BRIEF}\n## Rulings\n\n| Ruling | Paths | Decision | Note |\n| --- | --- | --- | --- |\n| R-001-1 | \`src/db/**\` | allow | n |\n`;
+    write(root, 'briefs/001_remove.md', text);
+    git(root, 'commit', '-q', '-am', 'an unsigned ruling');
+    expect(await waive({ root, brief: { id: '001', file: 'briefs/001_remove.md', text }, findings: [], base: 'main', commit: null })).toEqual([]);
+    expect(await waive({ root, brief: { id: '001', file: 'briefs/001_remove.md', text }, findings: [], warnings: [{ rule: 'scope-changed', path: 'src/db/**', paths: [] }], base: 'main', commit: null })).toEqual([]);
+  });
+
   it('waives nothing for a ruling nobody signed', async () => {
     const { root } = signedRepository();
     const text = ruling(BRIEF);

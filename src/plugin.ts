@@ -14,7 +14,9 @@
  * ```
  *
  * It waives a `protected-file` refusal for a path a verified `allow` ruling
- * names, and nothing else. A ruling that does not verify waives nothing.
+ * names, and a `scope-changed` warning for a pattern the round dropped from
+ * `protectedFiles` or added to `affectedFiles`, where a person ruled on it
+ * (below), and nothing else. A ruling that does not verify waives nothing.
  */
 
 import { loadConfig } from './fs.js';
@@ -29,7 +31,13 @@ export interface WaiveContext {
   readonly root: string;
   /** spec-brief passes a `null` id for a brief it could not name; its file still identifies it. */
   readonly brief: { readonly id: string | null; readonly file: string; readonly text: string };
-  readonly findings: readonly { readonly rule: string; readonly path?: string | undefined; readonly paths?: readonly string[] | undefined }[];
+  readonly findings: readonly Finding[];
+  /**
+   * The plan's warnings a plugin may lift, its `scope-changed` ones, from
+   * the spec-brief that hands them (spec-brief#90); none from one before it.
+   * Under `--strict` they are refusals, among `findings`.
+   */
+  readonly warnings?: readonly Finding[] | undefined;
   readonly base: string | null;
   readonly commit: string | null;
 }
@@ -39,6 +47,16 @@ export interface Waiver {
   readonly path: string;
   readonly reason: string;
 }
+
+/** A finding as spec-brief hands it a plugin: its rule, and the path or paths it is about. */
+export type Finding = { readonly rule: string; readonly path?: string | undefined; readonly paths?: readonly string[] | undefined };
+
+/**
+ * The pattern spec-brief reports where a brief's `affectedFiles` empties, a
+ * scope that bounds nothing: no ruling lifts that, since no ruling can name
+ * every file.
+ */
+const UNBOUNDED = '**';
 
 /**
  * Paths a finding names, in either of the shapes spec-brief reports them. A
@@ -52,9 +70,10 @@ function pathsOf(finding: WaiveContext['findings'][number]): string[] {
 
 export async function waive(context: WaiveContext): Promise<Waiver[]> {
   const protectedPaths = context.findings.filter((finding) => finding.rule === 'protected-file').flatMap(pathsOf);
+  const changes = [...context.findings, ...(context.warnings ?? [])].filter((finding) => finding.rule === 'scope-changed' && finding.path !== undefined && finding.path !== UNBOUNDED);
   // Asking git about nothing waives nothing: this saves the asking, and its
   // mutant is equivalent.
-  if (protectedPaths.length === 0) return [];
+  if (protectedPaths.length === 0 && changes.length === 0) return [];
   const { config } = await loadConfig(context.root);
   const workspace: Workspace = {
     root: context.root,
@@ -74,6 +93,25 @@ export async function waive(context: WaiveContext): Promise<Waiver[]> {
     if (ruling !== undefined) {
       waivers.push({ rule: 'protected-file', path, reason: `ruling ${ruling.id}, signed by ${ruling.signer}, allows it` });
     }
+  }
+  // A scope change is lifted where a person ruled on it: a verified ruling
+  // that names the pattern itself, or verified rulings that allow every file
+  // the change let through, where it let one through. A change that let
+  // none through yet is a loosened brief that no ruling has spoken to, and
+  // stays a warning (agreed with spec-brief's round 29).
+  for (const change of changes) {
+    const pattern = change.path!;
+    if (waivers.some((waiver) => waiver.rule === 'scope-changed' && waiver.path === pattern)) continue;
+    const named = verified.find((ruling) => ruling.paths.includes(pattern));
+    if (named !== undefined) {
+      waivers.push({ rule: 'scope-changed', path: pattern, reason: `ruling ${named.id}, signed by ${named.signer}, names ${pattern}` });
+      continue;
+    }
+    const files = change.paths ?? [];
+    const covering = files.map((file) => rulingFor(verified, file));
+    if (files.length === 0 || covering.includes(undefined)) continue;
+    const ids = [...new Set(covering.map((ruling) => `${ruling!.id}, signed by ${ruling!.signer}`))];
+    waivers.push({ rule: 'scope-changed', path: pattern, reason: `every file it let through is allowed: ${ids.map((id) => `ruling ${id}`).join('; ')}` });
   }
   return waivers;
 }

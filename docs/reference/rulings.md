@@ -33,6 +33,7 @@ A ruling is a row in the brief's `## Rulings` table. It **counts** when the comm
 **The spec-brief plugin.** spec-brief's archive refuses a round that changed a protected file, and learns that a signed ruling allows it only from this package's spec-brief plugin: `init` adds `"plugins": ["@spec-family/spec-harness/spec-brief-plugin"]` to spec-brief's configuration.
 
 - Without it, the archive refuses the file whatever was signed.
+- spec-brief 0.15.0's `scope-changed`, a warning where the round dropped a pattern from its brief's `protectedFiles` or added one to its `affectedFiles`, is waived through it too: where a signed ruling names the pattern itself, or signed rulings allow every file the change let through. A change that let no file through yet, and an `affectedFiles` emptied (`**`), stay warnings: no ruling has spoken to them.
 - `doctor` says whether spec-brief loads the spec-brief plugin, and `audit` names it as the reason for such a refusal.
 - spec-brief loads a plugin by a path as well, one that starts with `.` or is absolute: a path to this package's spec-brief plugin file counts as loading it.
 
