@@ -84,7 +84,7 @@ describe('the hook as a turn ends', () => {
   });
 
   it('reports what is outside the scope under the outOfScope in force, and nothing in it, nor the brief itself', async () => {
-    const WARN = `README.md is outside brief 001's scope, which covers src/auth/**. Next: if the round needs it, say so in ${BRIEF_FILE} and add it to affectedFiles; the archive reports every file outside the scope.`;
+    const WARN = `README.md is outside brief 001's scope, which covers src/auth/**. Next: if the round needs it, say so in ${BRIEF_FILE} and add it to affectedFiles; the archive reports every file outside the scope that the round commits.`;
     const DENY = `README.md is outside brief 001's scope, which covers src/auth/**. Next: add it to affectedFiles in ${BRIEF_FILE} if the round needs it, which is a change the person who approved the brief must see; or if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool.`;
     for (const [outOfScope, words] of [
       ['warn', WARN],

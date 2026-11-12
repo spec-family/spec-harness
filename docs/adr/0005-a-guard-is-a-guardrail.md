@@ -2840,6 +2840,23 @@ release (spec-core's ADR-0009).
   all the same, and to write it without the `..`. `check_path` answers each
   such path so, and the hook says it where every path of the write is one.
 
+*Amended 2026-11-12.* **The files the guard runs on.** Round 29's
+evaluation wrote, through Claude Code's tools, `.git/hooks/pre-commit`,
+the harness's kept answers under `.git/spec-harness`, the installed
+`dist/guard.js`, `.claude/settings.json`, the allowed-signers file and
+`.spec-harness.json`: each was a warning that the write is outside the
+brief's scope, with a hint that the archive reports every such file, which
+it does not for what is under `.git` or ignored. Any of them can turn the
+guard off. The guard now knows them by a list of its own, `HARNESS_FILES`
+in `guard.ts` and the configured allowed-signers file. `protectHarness`,
+`"ask"` or `"deny"`, has such a write put to the person or refused, reason
+`harness-file`, before the brief's scope is read, unless a signed ruling
+allows it; unset, the brief decides it as before, and the hint says what
+the file is. It is opt-in under the D4 freeze, a refusal where there was a
+warning being a change a run can see; `"deny"` is to be the default after
+it. The hint on any other write outside the scope says the archive reports
+every such file the round commits.
+
 ## Consequences
 
 An agent that writes through a shell passes the guard and is caught at the

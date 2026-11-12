@@ -8,6 +8,12 @@ May the round write this?
 | one in `affectedFiles` | Allowed. |
 | anything else | **Outside the scope**: a warning by default, or a question to the person, or a refusal (`outOfScope`: `warn`, `ask`, `deny`). |
 
+**The files the guard runs on.** Some files are the guard itself, or what it takes its trust from: `.git/**` (git's hooks, and the harness's state under `.git/spec-harness`), `.spec-harness.json`, spec-brief's configuration (`.spec-brief.json`, `spec-brief.json`), whose plugins tell its archive which rulings count, Claude Code's project settings (`.claude/settings.json`, `.claude/settings.local.json`), which start the hook or turn every hook off, the installed tools (`node_modules/@spec-family/**`), and the allowed-signers file `rulings.allowedSigners` names. A round has no reason to write one, and an agent that wrote one could turn the guard off.
+
+- By default such a write is decided by the brief as any other file is: outside the scope, a warning. The hint says what the file is, and that `"protectHarness"` holds such a write, where it said the archive reports it: the archive sees what the round commits, and nothing under `.git` or ignored.
+- With `"protectHarness": "ask"` or `"deny"` in `.spec-harness.json`, the guard puts the write to the person or refuses it, reason `harness-file`, whatever the brief's scope says, unless a signed ruling allows it. A brief that protects such a file refuses it as before.
+- The default becomes `"deny"` in a later minor, announced a minor ahead. Claude Code's settings in your home directory are outside the repository, and no brief governs them.
+
 Paths are compared as the filesystem spells them, links resolved and case corrected, so `SRC/db/schema.ts` does not walk past a protection on `src/db/schema.ts` on Windows.
 
 A path through a link is decided two ways: as it reads, its `..` taken first, and as the system writes it, which on Linux and macOS reads a `..` from where the link before it leads and follows a link to nothing to the file it names. Each file is decided by the work tree that holds it, and the stricter answer stands, so `deep/../schema.ts`, `deep` a link to `lib/x`, is refused where `lib/**` is protected, in words that say where the link leads. Which of the two Claude Code's tools write, its hooks reference and its permissions page do not say (read 2026-10-24). On Windows, which reads the `..` first, the two are one ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).

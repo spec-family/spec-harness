@@ -10,7 +10,7 @@
  */
 
 import { globAlternatives, parseGlob, type Glob, type GlobAlternative } from './vendor/spec-core/pattern/index.js';
-import type { OutOfScope } from './config.js';
+import type { OutOfScope, ProtectHarness } from './config.js';
 import type { BriefRow } from './types.js';
 
 export type Verdict = 'allow' | 'warn' | 'ask' | 'deny';
@@ -24,6 +24,7 @@ export type Reason =
   | 'unreadable-protection'
   | 'in-scope'
   | 'out-of-scope'
+  | 'harness-file'
   | 'held';
 
 export interface Decision {
@@ -54,6 +55,10 @@ export interface GuardInput {
   readonly noBrief?: string | undefined;
   readonly rulings: readonly VerifiedRuling[];
   readonly outOfScope: OutOfScope;
+  /** What a write to a file the guard runs on gets; nothing more than the brief gives it where not given. */
+  readonly protectHarness?: ProtectHarness | null | undefined;
+  /** The allowed-signers file the configuration names, which rulings take their trust from; the default where not given. */
+  readonly signers?: string | undefined;
 }
 
 function compile(pattern: string): Glob | string {
@@ -103,6 +108,35 @@ export function rulingFor(rulings: readonly VerifiedRuling[], path: string): Ver
   return rulings.find((candidate) => matching(candidate.paths, path).matched.length > 0);
 }
 
+/**
+ * The files the guard runs on or takes its trust from, which a round has
+ * no reason to write and an agent that wrote one could turn the guard off
+ * by: git's hooks and the harness's state under git's directory, the
+ * configuration of the harness and of spec-brief, whose plugins tell its
+ * archive which rulings count, Claude Code's project settings, which start
+ * the hook or turn every hook off, and the installed tools themselves.
+ * The allowed-signers file is the configuration's, and is added to them.
+ * Each was a warning that the write is outside the brief's scope, where
+ * one is, and the hint said the archive reports it, which it does not for
+ * what is under `.git` or ignored (round 29's evaluation; ADR-0005).
+ */
+export const HARNESS_FILES: readonly string[] = [
+  '.git/**',
+  '.spec-harness.json',
+  '.spec-brief.json',
+  'spec-brief.json',
+  '.claude/settings.json',
+  '.claude/settings.local.json',
+  'node_modules/@spec-family/**',
+];
+
+const SIGNERS = '.github/allowed_signers';
+
+/** The pattern of {@link HARNESS_FILES}, or the allowed-signers file, that names `path`; `null` for none. */
+export function harnessFile(path: string, signers: string = SIGNERS): string | null {
+  return matching([...HARNESS_FILES, signers], path).matched[0] ?? null;
+}
+
 const ESCALATE =
   'if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool';
 
@@ -137,6 +171,29 @@ export function decide(input: GuardInput): Decision {
       because: [],
       message: `${path} is brief ${brief.id} itself`,
       hint: 'tick or disposition its boxes as the work lands',
+    };
+  }
+
+  const owned = harnessFile(path, input.signers);
+  if (owned !== null && input.protectHarness != null) {
+    const ruling = rulingFor(input.rulings, path);
+    if (ruling !== undefined) {
+      return {
+        path,
+        verdict: 'allow',
+        reason: 'ruled',
+        because: [ruling.id],
+        message: `${path} is a file spec-harness's guard runs on, and ruling ${ruling.id}, signed by ${ruling.signer}, allows it`,
+        hint: 'keep the change to what the ruling allows',
+      };
+    }
+    return {
+      path,
+      verdict: input.protectHarness,
+      reason: 'harness-file',
+      because: [owned],
+      message: `${path} is a file spec-harness's guard runs on or takes its trust from (${owned}), which a round does not change`,
+      hint: `change it outside the round, where the person sees the change; or ${ESCALATE}`,
     };
   }
 
@@ -198,7 +255,9 @@ export function decide(input: GuardInput): Decision {
     hint:
       verdict === 'deny'
         ? `add it to affectedFiles in ${brief.file} if the round needs it, which is a change the person who approved the brief must see; or ${ESCALATE}`
-        : `if the round needs it, say so in ${brief.file} and add it to affectedFiles; the archive reports every file outside the scope`,
+        : owned !== null
+          ? `it is a file spec-harness's guard runs on or takes its trust from (${owned}), and a round has no reason to write it: set "protectHarness" to "ask" or "deny" in .spec-harness.json to have the guard hold such a write`
+          : `if the round needs it, say so in ${brief.file} and add it to affectedFiles; the archive reports every file outside the scope that the round commits`,
   };
 }
 

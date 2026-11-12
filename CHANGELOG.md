@@ -29,6 +29,25 @@ cannot turn a run red. The family's policy is
   ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md),
   amended 2026-11-12).
 
+- **`"protectHarness": "ask"` or `"deny"`** in `.spec-harness.json` has the
+  guard put to the person, or refuse, a write to a file it runs on or takes
+  its trust from: `.git/**`, `.spec-harness.json`, spec-brief's
+  configuration, Claude Code's project settings, `node_modules/@spec-family/**`
+  and the allowed-signers file. An agent that wrote one could turn the
+  guard off, and each was a warning that the write is outside the brief's
+  scope. The decision's `reason` is `harness-file`. Opt-in under the D4
+  freeze: the default becomes `"deny"` in a later minor, announced a minor
+  ahead
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+
+### Fixed
+
+- The hint on a write outside the scope said the archive reports every such
+  file, which it does not for a file under `.git` or one git ignores: it
+  says the archive reports every one the round commits, and on a file the
+  guard runs on, what the file is and that `protectHarness` holds such a
+  write.
+
 ## 0.25.0
 
 `audit --if-round` passes a run where no brief is named, or where the

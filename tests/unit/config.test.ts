@@ -59,6 +59,14 @@ describe('every key', () => {
     expect(parseConfig({ base: null }).base).toBeNull();
   });
 
+  it('reads protectHarness, null where it is not set, and refuses any other value', () => {
+    expect(DEFAULT_CONFIG.protectHarness).toBeNull();
+    expect(parseConfig({ protectHarness: 'ask' }).protectHarness).toBe('ask');
+    expect(parseConfig({ protectHarness: 'deny' }).protectHarness).toBe('deny');
+    expect(parseConfig({ protectHarness: null }).protectHarness).toBeNull();
+    for (const value of ['warn', true, 'Deny']) expect(refusal({ protectHarness: value }), String(value)).toBe('.spec-harness.json: "protectHarness" must be "ask", "deny" or null');
+  });
+
   it('reads rulings, keeping the default of a key it leaves out', () => {
     expect(parseConfig({ rulings: { section: 'Decisions' } }).rulings).toEqual({ section: 'Decisions', allowedSigners: '.github/allowed_signers' });
     expect(parseConfig({ rulings: { allowedSigners: 'SIGNERS' } }).rulings).toEqual({ section: 'Rulings', allowedSigners: 'SIGNERS' });
@@ -96,7 +104,7 @@ describe('every refusal', () => {
 
   it('refuses an unknown key at every level, listing the keys there are', () => {
     expect(refusal({ outofscope: 'warn' })).toBe(
-      '.spec-harness.json: unknown key "outofscope"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport',
+      '.spec-harness.json: unknown key "outofscope"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport, protectHarness',
     );
     expect(refusal({ rulings: { signers: 'x' } })).toBe('.spec-harness.json: "rulings": unknown key "signers"; the keys are section, allowedSigners');
     expect(refusal({ dependencies: { manifest: [] } })).toBe('.spec-harness.json: "dependencies": unknown key "manifest"; the keys are manifests');

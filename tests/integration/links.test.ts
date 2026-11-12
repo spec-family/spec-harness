@@ -283,7 +283,7 @@ describe('a write through a link', () => {
     expect(JSON.parse(after.stdout)).toEqual({
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
-        additionalContext: `spec-harness: ${scoped} is written to src/b.ts through a link: src/b.ts is outside brief 001's scope, which covers src/app/**. Next: if the round needs it, say so in ${BRIEF_FILE} and add it to affectedFiles; the archive reports every file outside the scope.`,
+        additionalContext: `spec-harness: ${scoped} is written to src/b.ts through a link: src/b.ts is outside brief 001's scope, which covers src/app/**. Next: if the round needs it, say so in ${BRIEF_FILE} and add it to affectedFiles; the archive reports every file outside the scope that the round commits.`,
       },
     });
   });

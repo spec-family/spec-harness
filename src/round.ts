@@ -205,7 +205,7 @@ export async function checkPaths(
   const resolved = given.map((path) => ({ given: path, path: repositoryPath(path, workspace.root, cwd), written: repositoryPath(reachedBy(path, cwd).at(-1)!, workspace.root, cwd) }));
   const decideAll = (rulings: readonly VerifiedRuling[]): Decision[] =>
     resolved.map(({ path, given: g, written }) => {
-      const input = { path, given: g, brief, noBrief, rulings, outOfScope: workspace.config.outOfScope };
+      const input = { path, given: g, brief, noBrief, rulings, outOfScope: workspace.config.outOfScope, protectHarness: workspace.config.protectHarness, signers: workspace.config.rulings.allowedSigners };
       return decideWritten(decide(input), { ...input, path: written });
     });
   const first = decideAll([]);

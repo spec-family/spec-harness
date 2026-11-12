@@ -47,7 +47,7 @@ refused  brief 001 does not empower this round to change src/db/schema.ts (prote
          if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool
 ok       src/auth/token.ts is in brief 001's scope (src/auth/**)
 warning  README.md is outside brief 001's scope, which covers src/auth/**
-         if the round needs it, say so in briefs/001_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope
+         if the round needs it, say so in briefs/001_rotate-tokens.md and add it to affectedFiles; the archive reports every file outside the scope that the round commits
 ```
 
 That exits 1. Claude Code asks the same before every `Edit` and `Write`, through the hook `init` wrote, and the refused write never happens; Claude reads why, and the next step:
