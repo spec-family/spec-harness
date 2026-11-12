@@ -66,6 +66,7 @@ import {
   addRulingRow,
   nextId,
   readRulings,
+  signersAtBoth,
   renderMemo,
   renderRow,
   type EscalationOption,
@@ -164,7 +165,7 @@ export async function resolveBase(workspace: Workspace, flag: string | undefined
   const noHead = 'HEAD names no commit: nothing is committed on this branch yet';
   let anchor: Anchor;
   let at: string;
-  let found: { readonly ref: string; readonly sha: string } | { readonly reason: string } | null;
+  let found: { readonly ref: string; readonly sha: string } | { readonly reason: string };
   let source: BaseSource;
   let measured: HarnessConfig | { readonly reason: string };
   /** The merge base found on the way, where it is the base's. */
@@ -183,8 +184,10 @@ export async function resolveBase(workspace: Workspace, flag: string | undefined
     // the base is what the configuration there names, or that branch.
     const configured = flag === undefined ? measured.base : null;
     source = flag !== undefined ? 'flag' : configured !== null ? 'config' : 'remote';
-    found = configured === null ? anchored : configured === workspace.config.base ? first : await commitOf(configured, true, root);
-    own = workspace.config.base === null ? anchored.sha : first === null || 'reason' in first ? null : first.sha;
+    found = configured === null ? anchored : await commitOf(configured, true, root);
+    // Without --base the first wave read the work tree's base, where it
+    // names one.
+    own = workspace.config.base === null ? anchored.sha : 'sha' in first! ? first!.sha : null;
   } else {
     if (first === null) return unresolved('no base is named and the remote has no default branch; pass --base <ref> or set "base"');
     if ('reason' in first) return unresolved(first.reason);
@@ -203,10 +206,7 @@ export async function resolveBase(workspace: Workspace, flag: string | undefined
     if (stands) common = before;
     own = first.sha;
   }
-  // The base is the work tree's, read in the first wave, only where it is
-  // the one the anchor configures, which is a name: the null is the
-  // compiler's, and what it says is equivalent to its mutants.
-  if (found === null || 'reason' in found) return unresolved(found === null ? 'no base is named' : found.reason);
+  if ('reason' in found) return unresolved(found.reason);
   common ??= await mergeBase(found.sha, head, root);
   if (common === null) return unresolved(`"${found.ref}" and HEAD share no history`);
   const changes: ConfigChange[] = [];
@@ -214,7 +214,7 @@ export async function resolveBase(workspace: Workspace, flag: string | undefined
   // Elsewhere it is a change where it names another commit than the base,
   // or none: "main" beside a remote whose default branch is origin/main
   // names what the base is, in other words.
-  if (flag === undefined && workspace.config.base !== measured.base && own !== found.sha) {
+  if (flag === undefined && own !== found.sha) {
     changes.push({ key: 'base', workTree: workspace.config.base ?? "the remote's default branch", measured: found.ref, at });
   }
   const signers = measured.rulings.allowedSigners;
@@ -265,11 +265,7 @@ export async function checkRulings(workspace: Workspace, brief: Pick<BriefRow, '
     const reason = `${missing} has no ${base.signers}, so no signature can count`;
     return { rows, verified: [], unverified: allows.map((row) => ({ id: row.id, reason })), problems: findings };
   }
-  const before = new Set(atStart.split('\n').map((line) => line.trim()));
-  const signers = atTip
-    .split('\n')
-    .filter((line) => before.has(line.trim()))
-    .join('\n');
+  const signers = signersAtBoth(atTip, atStart);
   // Only verify-commit below reads this copy, so where it is kept is
   // equivalent to its mutants. It is named by the whole digest, read as hex
   // from its bytes: a digest asked for in no encoding, which a mutant of

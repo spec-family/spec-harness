@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createReader } from '../../src/reader.js';
-import { addRulingRow, nextId, pathsOf, readRulings, renderMemo, renderRow, type EscalationRequest, type TableView } from '../../src/rulings.js';
+import { addRulingRow, nextId, pathsOf, readRulings, renderMemo, renderRow, signersAtBoth, type EscalationRequest, type TableView } from '../../src/rulings.js';
 
 function table(headers: string[], ...rows: [number, ...string[]][]): TableView {
   return { headers, rows: rows.map(([line, ...cells]) => ({ cells, line })) };
@@ -279,5 +279,16 @@ describe('adding a ruling to a brief', () => {
     const text = '# 012\n\n## 3. **Decisions:**\n\n| Ruling | Paths | Decision |\n| --- | --- | --- |\n';
     const where = reader.sectionTables(text, 'Decisions');
     expect(addRulingRow(text, 'Decisions', row, where)).toBe(`${text}${row}\n`);
+  });
+});
+
+describe('the signers a ruling is verified against (ADR-0006)', () => {
+  it('are the base tip\'s lines that the merge base has too, read without the space around them', () => {
+    const a = 'a@example.com namespaces="git" ssh-ed25519 AAAA';
+    const b = 'b@example.com namespaces="git" ssh-ed25519 BBBB';
+    expect(signersAtBoth(`${a}\n${b}\n`, `${a}\n`)).toBe(`${a}\n`);
+    expect(signersAtBoth(`${a}\r\n${b}\r\n`, `  ${a}\n`)).toBe(`${a}\r\n`);
+    expect(signersAtBoth(`${b}\n`, `${a}\n`)).toBe('');
+    expect(signersAtBoth(`${a}\n${b}`, `${b}\n${a}`)).toBe(`${a}\n${b}`);
   });
 });
