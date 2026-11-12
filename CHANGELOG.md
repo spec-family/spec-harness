@@ -9,6 +9,26 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
+## Unreleased
+
+### Security
+
+- **The checkout's git configuration can no longer make an unsigned ruling
+  count.** `rulings`, `guard`, the hook, `context` and `audit` verified a
+  ruling with whatever program the checkout configured, so a script set as
+  `gpg.ssh.program`, or as `gpg.program` or `gpg.x509.program` for a commit
+  carrying an OpenPGP or X.509 block, could print a good signature by any
+  principal; and blamed its row past an ignore-revs file and a textconv
+  filter the checkout configured, which could credit a widened row to the
+  signed commit before it. The signature is now checked with `ssh-keygen`,
+  `gpg` and `gpgsm` as git finds them on PATH, and the row blamed with
+  `--no-ignore-revs-file` and `--no-textconv`. A `gpg.ssh.program` of your
+  own, such as Windows' OpenSSH, is no longer read for a ruling: verifying
+  needs `ssh-keygen` on PATH. The rulings reference says what the check
+  still trusts
+  ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md),
+  amended 2026-11-12).
+
 ## 0.25.0
 
 `audit --if-round` passes a run where no brief is named, or where the
