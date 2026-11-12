@@ -5,7 +5,7 @@
  * The full sweep mutates every module against the whole suite, git and the
  * sibling tools included, and one runner took 69 to 130 minutes for it
  * (ADR-0010). The amendment of 2026-10-01 to ADR-0010 has the measurements
- * behind the split, and the last of 2026-11-12 the ones behind the table
+ * behind the split, and the second of 2026-11-12 the ones behind the table
  * below, in nine shards. The core sweep, in ci.yml, is not split.
  *
  * Each shard runs Stryker with stryker.shard.config.mjs, which takes `mutate`
@@ -18,9 +18,14 @@
  *
  * Adapted from spec-core (its ADR-0007), which took it from
  * @spec-family/spec-graph (its ADR-0019) and @spec-family/spec-guard (its
- * ADR-0003); the same merge scores all their sweeps. The full sweep has no
- * incremental file to split between the shards.
+ * ADR-0003); the same merge scores all their sweeps. A pull request's sweep
+ * runs incrementally, from the file main's last full sweep published, as
+ * spec-guard's and spec-graph's do: cacheFor() gives each shard its part of
+ * that file, and toolchainKey() names the Stryker and vitest it is good for
+ * (ADR-0010, amended 2026-11-13).
  *
+ *   node scripts/mutation-shards.mjs toolchain
+ *   node scripts/mutation-shards.mjs cache <shard>
  *   node scripts/mutation-shards.mjs merge <directory holding the shard reports>
  */
 
@@ -163,6 +168,19 @@ function shardNumber(value, count) {
   return shard;
 }
 
+// Stryker keeps the verdicts an incremental file holds for files a run does
+// not mutate, so that a partial run does not forget them. A shard started from
+// the whole sweep's file would report every other shard's files too, with
+// verdicts from the last sweep rather than this one, and the merge would
+// refuse it. Each shard starts from its own part: every test, and only the
+// files it mutates (spec-guard's ADR-0003, amended 2026-10-01).
+export function cacheFor(report, patterns) {
+  return {
+    ...report,
+    files: Object.fromEntries(Object.entries(report.files).filter(([file]) => mutates(patterns, file))),
+  };
+}
+
 export function mutateFor(base, shard, assigned = ASSIGNED) {
   const number = shardNumber(shard, assigned.length + 1);
   checkAssignment(base, assigned);
@@ -170,6 +188,36 @@ export function mutateFor(base, shard, assigned = ASSIGNED) {
     ? [...assigned[number - 1]]
     : [...base, ...assigned.flat().map((file) => `!${file}`)];
 }
+
+// To an incremental run a test is its file, its name and where it starts, and
+// three packages decide those: Stryker's core matches the last sweep's tests
+// to this run's, its vitest runner names each test and, since 10.1, says where
+// it starts, and vitest gives the runner both. A test of the last sweep that
+// the match misses is carried into the report as one that did not run this
+// time, beside the test it was: spec-guard's sweep on Stryker 10.1.1, started
+// from the file 10.0.0 wrote, held the suite twice (its ADR-0003, amended
+// 2026-11-08). So the incremental file is keyed on these three versions, and
+// a run of any others restores none and tests every mutant.
+export const TOOLCHAIN = ['@stryker-mutator/core', '@stryker-mutator/vitest-runner', 'vitest'];
+
+export function toolchainKey(versionOf) {
+  return TOOLCHAIN.map((name) => {
+    const version = versionOf(name);
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+\S*$/.test(version)) {
+      throw new ShardError(`No version of ${name} to key the incremental file on, got ${JSON.stringify(version)}: run npm ci first.`);
+    }
+    return `${name.replace('@stryker-mutator/', '')}-${version}`;
+  }).join('+');
+}
+
+const installedVersion = (name) => {
+  try {
+    return JSON.parse(readFileSync(path.join('node_modules', name, 'package.json'), 'utf8')).version;
+  } catch (error) {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+};
 
 // A test is its file and its name; ids are numbered afresh in every run.
 const testKey = (file, name) => JSON.stringify([file, name]);
@@ -180,7 +228,9 @@ function testsOf(shard, report) {
     for (const test of entry.tests) {
       const key = testKey(file, test.name);
       if (tests.has(key)) {
-        throw new ShardError(`Shard ${shard} has two tests named "${test.name}" in ${file}, so its tests cannot be matched by name.`);
+        throw new ShardError(
+          `Shard ${shard} has two tests named "${test.name}" in ${file}, so its tests cannot be matched by name. A run started from an incremental file another Stryker or vitest wrote reports every test twice; see toolchainKey.`,
+        );
       }
       tests.set(key, test);
     }
@@ -192,6 +242,9 @@ const describeTest = (key) => {
   const [file, name] = JSON.parse(key);
   return `"${name}" in ${file}`;
 };
+
+const CARRIED =
+  " A shard started from an incremental file that holds other shards' files reports their old verdicts as its own; see cacheFor.";
 
 export function mergeReports(shards, { base, thresholds, assigned = ASSIGNED }) {
   const count = assigned.length + 1;
@@ -223,11 +276,11 @@ export function mergeReports(shards, { base, thresholds, assigned = ASSIGNED }) 
     }
     for (const file of Object.keys(report.files)) {
       if (mutatedBy.has(file)) {
-        throw new ShardError(`${file} was mutated by shards ${mutatedBy.get(file)} and ${shard}.`);
+        throw new ShardError(`${file} was mutated by shards ${mutatedBy.get(file)} and ${shard}.${CARRIED}`);
       }
       mutatedBy.set(file, shard);
       const owner = owners.get(file) ?? count;
-      if (owner !== shard) throw new ShardError(`${file} belongs to shard ${owner}, but shard ${shard} reported it.`);
+      if (owner !== shard) throw new ShardError(`${file} belongs to shard ${owner}, but shard ${shard} reported it.${CARRIED}`);
     }
   }
   for (const [file, shard] of owners) {
@@ -376,12 +429,41 @@ updateTheme();
 const minutes = (seconds) => `${Math.floor(seconds / 60)}m${String(Math.round(seconds % 60)).padStart(2, '0')}s`;
 
 async function main(argv) {
-  const [command, directory] = argv;
-  if (command !== 'merge' || directory === undefined) {
-    console.error('usage: node scripts/mutation-shards.mjs merge <directory holding the shard reports>');
+  const [command, argument] = argv;
+  if (command === 'toolchain' && argument === undefined) {
+    try {
+      console.log(toolchainKey(installedVersion));
+      return 0;
+    } catch (error) {
+      if (!(error instanceof ShardError)) throw error;
+      console.error(`${process.env.GITHUB_ACTIONS === 'true' ? '::error::' : ''}${error.message}`);
+      return 1;
+    }
+  }
+  if (!['cache', 'merge'].includes(command) || argument === undefined) {
+    console.error('usage: node scripts/mutation-shards.mjs toolchain | cache <shard> | merge <directory holding the shard reports>');
     return 2;
   }
   const { default: config } = await import(pathToFileURL(path.resolve('stryker.config.mjs')).href);
+  const incrementalFile = config.incrementalFile ?? 'reports/stryker-incremental.json';
+
+  if (command === 'cache') {
+    const patterns = mutateFor(config.mutate, argument);
+    let report;
+    try {
+      report = JSON.parse(readFileSync(incrementalFile, 'utf8'));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      console.log(`No incremental file at ${incrementalFile}: shard ${argument} tests every mutant.`);
+      return 0;
+    }
+    const kept = cacheFor(report, patterns);
+    writeFileSync(incrementalFile, JSON.stringify(kept));
+    console.log(`Shard ${argument} starts from ${Object.keys(kept.files).length} of the ${Object.keys(report.files).length} files in ${incrementalFile}.`);
+    return 0;
+  }
+
+  const directory = argument;
 
   const shards = [];
   const seconds = new Map();
@@ -417,6 +499,9 @@ async function main(argv) {
   const outputs = [
     [config.jsonReporter?.fileName ?? 'reports/mutation/mutation.json', JSON.stringify(merged)],
     [config.htmlReporter?.fileName ?? 'reports/mutation/index.html', reportHtml(merged, elements)],
+    // What a pull request's shards start from, where main's full sweep
+    // publishes it: the merged report is the whole sweep's file.
+    [incrementalFile, JSON.stringify(merged)],
   ];
   for (const [file, content] of outputs) {
     mkdirSync(path.dirname(file), { recursive: true });

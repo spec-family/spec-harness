@@ -1496,3 +1496,63 @@ static ones beside it, vitest 4 ran the files the shard's other sources
 brought quickest first, which cost the shard of `src/commands.ts` and
 `src/setup.ts` a quarter more than its files added up to (amended
 2026-10-14). The sweep of this change reads whether that holds on vitest 5.
+
+The sweep of 7dda409 (run 43277149524), whose source is that of the
+amendment before, came to 98.11% with 250 undetected, where that source came
+to 98.10% with 251 over eight shards: only `src/rulings.ts` 197, a static
+mutant its comment calls equivalent, moved, from survived to a timeout, at
+its timeout's edge as `src/reader.ts` 19 and `src/config.ts` 257 are. Its
+longest job took 32.3 minutes, and its jobs 255.5 runner-minutes, where the
+same source took 264.3 over eight shards. Seven shards came within the
+table's minutes or at most half a minute over them; the shards of
+`src/sandbox.ts` and of `src/workspace.ts` came 6.5 and 3.5 under their
+least. On vitest 5 a file's static minutes still move with its shard's other
+files, `src/sandbox.ts` from 5.1 to none and `src/rulings.ts` from 6.2 to
+13.6, but the sweep's do not: 122.5, within the six sweeps' 121.5 to 128.8,
+and no shard took more than half a minute over its files' most, where vitest
+4 cost one a quarter more. The next re-measure adds this sweep's timelines.
+
+*Amended 2026-11-13.* **A pull request's full sweep is incremental.** The
+amendment of 2026-10-12 has a pull request that changes what only the full
+sweep reaches swept before it merges, and the sweep was the whole of it:
+230.4 runner-minutes in main's run 43076735805, and 250.1 to 269.6 in
+main's three newest, for each push to such a pull request, on every
+re-vendor of spec-core and every change to the integration suite.
+spec-guard and spec-graph run a pull request's sweep incrementally from
+the file main's last full sweep published (their ADR-0003 and ADR-0007);
+spec-guard's last six took 8 to 20 runner-minutes, against 124 to 127 for
+its full sweep on main.
+
+So here too, by spec-guard's design. A pull request's nine shards restore
+`reports/stryker-incremental.json` from main's last full sweep, under a key
+of the three packages that decide what a test is to the match, Stryker's
+core, its vitest runner and vitest, as `npm ci` installed them
+(`scripts/mutation-shards.mjs toolchain`); each keeps its own files' part of
+it (`cache`), since Stryker reports the verdicts the file holds for files a
+run does not mutate as its own; and each runs Stryker with `--incremental`.
+A mutant whose code and covering tests read as they did keeps its verdict,
+and the rest run. A pull request that moves one of the three packages
+restores nothing and sweeps every mutant. A push to main, the schedule and
+a dispatch sweep in full, and only main's full sweep, where its merge
+passed, publishes the file: the merge writes the merged report as the
+whole sweep's file. A pull request and a branch's dispatch never publish
+one, so no branch can seed the verdicts another starts from, and an
+incremental result is never fed back in. The paths a pull request is swept
+for are as they were, and both tiers apply the `break` to the merged
+report. The checks say which tier ran: `mutation (incremental, shard n of
+9)` and `mutation (incremental)`.
+
+What the incremental tier cannot see: a survivor in a module the pull
+request did not change, which its change made reachable through another
+module, keeps its old verdict, since neither its code nor its tests
+changed. The full sweep on main after the merge finds it. The case of the
+amendment of 2026-10-12, a changed module whose mutants a replay by hand
+had all killed and a release's sweep then found survivors in, is still
+read before the merge: the changed module's mutants run again.
+
+`tests/mutation-shards.test.ts` holds the key to the lockfile, a key
+followed by a dash to starting no other, both tiers to their events, each
+step that reads the key to its job's naming it first, and the publication
+to main's full sweep alone, as the workflow's one cache save and its last
+step, with no status function in its condition. The merge's refusals of a
+carried-over file and of a test named twice say where each comes from.

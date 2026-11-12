@@ -46,7 +46,13 @@ It runs in nine shards, balanced on measured minutes in
 merged report; a file no shard lists is mutated by the last. A mutant's test
 files run the quickest first there (`vitest.mutation.config.ts`), and a
 static mutant that survives runs them all, so a second added to the suite is
-a second for each of those in every sweep.
+a second for each of those in every sweep. On a pull request the full sweep
+runs incrementally, from the file main's last full sweep published, keeping
+the verdict of each mutant whose code and covering tests are unchanged; on
+main, weekly and on request it runs every mutant, that score counts, and
+only main's sweep publishes the file
+([ADR-0010](docs/adr/0010-toolchain-and-verification.md), amended
+2026-11-13).
 
 A change to a module the core sweep does not mutate whole, the command line,
 `init`, the server, `round.ts` and the edges, or to what the full sweep is

@@ -31,6 +31,7 @@ import { BaseSequencer, type TestModule, type TestModuleState, type TestSpecific
 
 import {
   ASSIGNED,
+  cacheFor,
   checkAssignment,
   formatTable,
   gate,
@@ -39,6 +40,8 @@ import {
   reportHtml,
   SHARD_COUNT,
   ShardError,
+  TOOLCHAIN,
+  toolchainKey,
   type Mutant,
   type Report,
   type Thresholds,
@@ -170,6 +173,8 @@ function verdicts(report: Report) {
   );
 }
 
+const CARRIED = " A shard started from an incremental file that holds other shards' files reports their old verdicts as its own; see cacheFor.";
+
 const refused = (shards: { shard: number; report: Report }[]) => {
   try {
     merge(shards);
@@ -200,6 +205,69 @@ describe('mutateFor', () => {
     );
     expect(() => checkAssignment(BASE, [['lib/a.ts']])).toThrow('lib/a.ts is assigned to shard 1');
     expect(checkAssignment(['src/**/*.ts', '!src/x/**', 'src/x/keep.ts'], [['src/x/keep.ts']]).get('src/x/keep.ts')).toBe(1);
+  });
+});
+
+describe('cacheFor', () => {
+  it('gives each shard every test and only its own files, and nobody a file the configuration does not mutate', () => {
+    const cache = unsplit();
+    cache.files['lib/types.ts'] = { mutants: [] };
+    cache.files['src/index.ts'] = { mutants: [] };
+    const parts = [1, 2, 3].map((shard) => cacheFor(cache, mutateFor(BASE, shard, ASSIGNMENT)));
+
+    expect(parts.map((part) => Object.keys(part.files))).toEqual([['src/b.ts', 'src/d.ts'], ['src/a.ts'], ['src/c.ts', 'src/e/f.ts']]);
+    for (const part of parts) {
+      expect(part.testFiles).toBe(cache.testFiles);
+      expect({ ...part, files: undefined }).toEqual({ ...cache, files: undefined });
+    }
+    expect(Object.keys(cache.files)).toContain('src/index.ts');
+  });
+
+  it('leaves nothing to carry over: the merge takes shards started from their parts', () => {
+    const original = unsplit();
+    const shards = split(original).map(({ shard, report }) => ({
+      shard,
+      report: { ...report, files: { ...cacheFor(original, mutateFor(BASE, shard, ASSIGNMENT)).files, ...report.files } },
+    }));
+    expect(verdicts(merge(shards))).toEqual(verdicts(original));
+  });
+});
+
+describe('toolchainKey', () => {
+  const versions: Record<string, string> = {
+    '@stryker-mutator/core': '10.1.1',
+    '@stryker-mutator/vitest-runner': '10.1.1',
+    vitest: '5.0.5',
+  };
+  const keyWith = (name: string, version: string | undefined) =>
+    toolchainKey((asked) => (asked === name ? version : versions[asked]));
+
+  it('names the three packages that decide what a test is to an incremental run, each at its version', () => {
+    expect(TOOLCHAIN).toEqual(['@stryker-mutator/core', '@stryker-mutator/vitest-runner', 'vitest']);
+    expect(toolchainKey((name) => versions[name])).toBe('core-10.1.1+vitest-runner-10.1.1+vitest-5.0.5');
+  });
+
+  it('moves with each of them, and no key followed by a dash starts another', () => {
+    // restore-keys match by prefix, and the workflow ends the key with a dash
+    // there, so vitest 5.0.1 must not restore what 5.0.12 published.
+    const keys = [
+      toolchainKey((name) => versions[name]),
+      keyWith('@stryker-mutator/core', '10.0.0'),
+      keyWith('@stryker-mutator/vitest-runner', '10.1.10'),
+      keyWith('vitest', '5.0.1'),
+      keyWith('vitest', '5.0.12'),
+      keyWith('vitest', '5.1.0-beta.2'),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const a of keys) for (const b of keys) if (a !== b) expect(`${b}-`.startsWith(`${a}-`), `${a} / ${b}`).toBe(false);
+  });
+
+  it('refuses a package with no version, rather than key on nothing', () => {
+    expect(() => keyWith('vitest', undefined)).toThrow(
+      new ShardError('No version of vitest to key the incremental file on, got undefined: run npm ci first.'),
+    );
+    expect(() => keyWith('@stryker-mutator/core', '')).toThrow('No version of @stryker-mutator/core to key the incremental file on, got "": run npm ci first.');
+    expect(() => keyWith('@stryker-mutator/vitest-runner', 'latest')).toThrow('got "latest"');
   });
 });
 
@@ -254,14 +322,26 @@ describe('mergeReports', () => {
   it('refuses a file mutated by two shards', () => {
     const shards = split(unsplit());
     shards[2]!.report.files['src/a.ts'] = shards[1]!.report.files['src/a.ts']!;
-    expect(refused(shards)).toBe('src/a.ts was mutated by shards 2 and 3.');
+    expect(refused(shards)).toBe(`src/a.ts was mutated by shards 2 and 3.${CARRIED}`);
   });
 
   it('refuses a file reported by a shard it does not belong to', () => {
     const shards = split(unsplit());
     shards[0]!.report.files['src/c.ts'] = shards[2]!.report.files['src/c.ts']!;
     delete shards[2]!.report.files['src/c.ts'];
-    expect(refused(shards)).toBe('src/c.ts belongs to shard 3, but shard 1 reported it.');
+    expect(refused(shards)).toBe(`src/c.ts belongs to shard 3, but shard 1 reported it.${CARRIED}`);
+  });
+
+  // What the first sharded sweep of spec-guard on CI did: every shard started
+  // from the whole sweep's incremental file, so Stryker reported the other
+  // shards' files too, with the old verdicts it had carried over.
+  it('refuses shards that carried the other shards\' verdicts over from an incremental file', () => {
+    const original = unsplit();
+    const shards = split(original).map(({ shard, report }) => ({
+      shard,
+      report: { ...report, files: { ...original.files, ...report.files } },
+    }));
+    expect(refused(shards)).toBe(`src/a.ts belongs to shard 2, but shard 1 reported it.${CARRIED}`);
   });
 
   it('refuses a listed file its shard did not mutate, as a renamed file would be', () => {
@@ -287,7 +367,9 @@ describe('mergeReports', () => {
     const shards = split(unsplit());
     const tests = shards[1]!.report.testFiles!['tests/a.test.ts']!.tests;
     tests.push({ ...tests[0]!, id: '998' });
-    expect(refused(shards)).toBe(`Shard 2 has two tests named "${tests[0]!.name}" in tests/a.test.ts, so its tests cannot be matched by name.`);
+    expect(refused(shards)).toBe(
+      `Shard 2 has two tests named "${tests[0]!.name}" in tests/a.test.ts, so its tests cannot be matched by name. A run started from an incremental file another Stryker or vitest wrote reports every test twice; see toolchainKey.`,
+    );
   });
 
   it('refuses a mutant that names a test its report does not define', () => {
@@ -843,6 +925,63 @@ describe('this repository', () => {
     expect(run(String(SHARD_COUNT))).toBe('loaded');
     expect(run(String(SHARD_COUNT + 1))).toContain(`A shard is a number from 1 to ${SHARD_COUNT}, got "${SHARD_COUNT + 1}".`);
     expect(run(undefined)).toContain(`A shard is a number from 1 to ${SHARD_COUNT}, got "undefined".`);
+  });
+
+  it('keys the incremental file on the Stryker and vitest the lockfile installs', () => {
+    const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8')) as { packages: Record<string, { version?: string }> };
+    const printed = execFileSync(process.execPath, ['scripts/mutation-shards.mjs', 'toolchain'], { cwd: ROOT, encoding: 'utf8' }).trim();
+    expect(printed).toBe(toolchainKey((name) => lock.packages[`node_modules/${name}`]?.version));
+  });
+
+  describe('the two tiers', () => {
+    const workflow = readFileSync(join(ROOT, '.github/workflows/mutation.yml'), 'utf8');
+    /** A job of the workflow, from its key to the next job's. */
+    const job = (name: string): string => `\n${(workflow.split(`\n  ${name}:\n`)[1] ?? '').split(/\n  [a-z-]+:\n/)[0] as string}`;
+    const steps = (name: string): string[] => job(name).split('\n      - ');
+    const step = (name: string, title: string): string => steps(name).find((each) => each.includes(`name: ${title}\n`)) ?? '';
+
+    it('run a pull request incrementally and every other event in full, and say which in each check', () => {
+      expect(job('shard')).toContain("\n      FULL: ${{ github.event_name != 'pull_request' }}\n");
+      const tier = "${{ github.event_name == 'pull_request' && 'incremental' || 'full' }}";
+      expect(job('shard')).toContain(`\n    name: mutation (${tier}, shard ${'${{ matrix.shard }}'} of ${'${{ strategy.job-total }}'})\n`);
+      expect(job('full')).toContain(`\n    name: mutation (${tier})\n`);
+      const sweep = step('shard', 'Mutation sweep, one shard');
+      expect(sweep).toContain('if [ "$FULL" = "true" ]; then\n            npx --no-install stryker run stryker.shard.config.mjs\n          else\n            npx --no-install stryker run stryker.shard.config.mjs --incremental\n          fi');
+    });
+
+    it('restore the incremental file only in the incremental tier, under the toolchain that published it, and give each shard its own part', () => {
+      const restore = step('shard', 'Restore the incremental file');
+      expect(restore).toContain("\n        if: env.FULL != 'true'\n        uses: actions/cache/restore@");
+      expect(restore).toContain('\n          key: stryker-incremental-${{ steps.toolchain.outputs.key }}-${{ github.sha }}\n');
+      expect(restore).toContain('\n          restore-keys: |\n            stryker-incremental-${{ steps.toolchain.outputs.key }}-\n');
+      const keep = step('shard', "Keep this shard's part of the incremental file");
+      expect(keep).toContain("\n        if: env.FULL != 'true'\n        run: node scripts/mutation-shards.mjs cache \"$MUTATION_SHARD\"");
+      // Each job names the toolchain before a step reads it: the restore, the
+      // part, the sweep; the merge, and the publication after it.
+      const order = (name: string, titles: string[]) => titles.map((title) => steps(name).findIndex((each) => each.includes(`name: ${title}\n`)));
+      const shard = order('shard', ['Name the toolchain', 'Restore the incremental file', "Keep this shard's part of the incremental file", 'Mutation sweep, one shard']);
+      expect(shard).toEqual([...shard].sort((a, b) => a - b));
+      expect(shard[0]).toBeGreaterThan(-1);
+      const full = order('full', ['Name the toolchain', 'Merge the shards and apply the gate', 'Publish the incremental file']);
+      expect(full).toEqual([...full].sort((a, b) => a - b));
+      expect(full[0]).toBeGreaterThan(-1);
+      for (const line of workflow.split('\n').filter((each) => each.includes('stryker-incremental-'))) {
+        expect(line.trim()).toMatch(/^(key: )?stryker-incremental-\$\{\{ steps\.toolchain\.outputs\.key \}\}-/);
+      }
+    });
+
+    it("publish the incremental file from main's full sweep alone, where its merge passed, and from no pull request or branch", () => {
+      const saves = [...workflow.matchAll(/uses: actions\/cache\/save@/g)];
+      expect(saves).toHaveLength(1);
+      const publish = step('full', 'Publish the incremental file');
+      expect(publish).toContain("\n        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'\n        uses: actions/cache/save@");
+      expect(publish).toContain('\n          key: stryker-incremental-${{ steps.toolchain.outputs.key }}-${{ github.sha }}\n');
+      // The last step, with no status function in its condition, so it is
+      // skipped where the merge refused the sweep or its score failed.
+      expect(steps('full').at(-1)).toBe(publish);
+      expect(publish).not.toMatch(/always\(\)|failure\(\)|cancelled\(\)/);
+      expect(job('shard')).not.toContain('actions/cache/save');
+    });
   });
 
   it('runs one job per shard', () => {
