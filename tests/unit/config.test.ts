@@ -181,6 +181,6 @@ describe('the report at the end of a turn', () => {
 
   it('is turned on by true alone', () => {
     for (const value of ['true', 1, 0, 'yes', {}, []]) expect(refusal({ turnReport: value }), JSON.stringify(value)).toBe('.spec-harness.json: "turnReport" must be true or false');
-    expect(refusal({ turnreport: true })).toContain('the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport');
+    expect(refusal({ turnreport: true })).toContain('the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport, protectHarness');
   });
 });

@@ -114,7 +114,7 @@ describe('a key of the configuration', () => {
   it('is an unknown key when it is one every object answers to, at the top and in every section', () => {
     for (const key of [...NAMES, PLAIN]) {
       expect(refusal(`{ "${key}": true }`), key).toBe(
-        `.spec-harness.json: unknown key "${key}"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport`,
+        `.spec-harness.json: unknown key "${key}"; the keys are $schema, branches, outOfScope, base, rulings, dependencies, context, assertions, probes, tools, turnReport, protectHarness`,
       );
       expect(refusal(`{ "tools": { "${key}": ["node", "x.js"] } }`), key).toBe(
         `.spec-harness.json: "tools": unknown key "${key}"; the keys are spec-brief, spec-graph, spec-guard`,
