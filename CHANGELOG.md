@@ -156,6 +156,11 @@ cannot turn a run red. The family's policy is
   spec-brief and spec-graph read theirs. Every command refused it, exit 2,
   with a character the message did not show, and the hook held every write.
 
+- **`guard` decides a linked worktree's file by that worktree**, as the
+  hook and the server's `check_path` do. Asked from the main checkout, it
+  said the file was outside the repository and allowed it, where the hook
+  refused a write to it.
+
 ### Changed
 
 - **A worker of either mutation sweep that Stryker starts after a timeout
