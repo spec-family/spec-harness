@@ -590,13 +590,33 @@ describe('the siblings', () => {
     );
   });
 
+  it('notes once, under its own line, a spec-brief that runs and cannot say which briefs it could not read whole, and none that can, is outdated or is named', async () => {
+    const said = (stdout: string): number => stdout.split('does not say which briefs it cannot read whole').length - 1;
+    const old = repository({}, null);
+    installFake(old.root, 'spec-brief', JSON.stringify({ version: '0.14.2' }));
+    const before = (await cli(['doctor'], old.root)).stdout;
+    expect(said(before)).toBe(1);
+    expect(before).toMatch(/\nfound {5}spec-brief {2}[^\n]*\(0\.14\.2\)\n {22}note: spec-brief 0\.14\.2 does not say /);
+    const current = repository({}, null);
+    installFake(current.root, 'spec-brief', JSON.stringify({ version: '0.15.0' }));
+    const now = (await cli(['doctor'], current.root)).stdout;
+    expect(said(now)).toBe(0);
+    // Nothing at all under its line: the next is spec-graph's.
+    expect(now).toMatch(/\nfound {5}spec-brief {2}[^\n]*\(0\.15\.0\)\n\S+ +spec-graph {2}/);
+    const outdated = repository({}, null);
+    installFake(outdated.root, 'spec-brief', JSON.stringify({ version: '0.11.0' }));
+    expect(said((await cli(['doctor'], outdated.root)).stdout)).toBe(0);
+    const named = repository({});
+    expect(said((await cli(['doctor'], named.root)).stdout)).toBe(0);
+  });
+
   it('reports a sibling older than this release runs as a problem, naming the minimum', async () => {
     const repo = repository({}, null);
     const bin = installFake(repo.root, 'spec-brief', JSON.stringify({ version: '0.12.1' }));
     installFake(repo.root, 'spec-guard', JSON.stringify({ version: '0.29.0' }));
     const pretty = await cli(['doctor'], repo.root);
     expect(pretty.code).toBe(1);
-    expect(pretty.stdout).toContain(`found     spec-brief  ${process.execPath} ${bin} (0.12.1)`);
+    expect(pretty.stdout).toContain(`found     spec-brief  ${process.execPath} ${bin} (0.12.1)\n${' '.repeat(22)}note: spec-brief 0.12.1 does not say which briefs it cannot read whole, so a brief whose protectedFiles it cannot read is guarded as one that protects nothing: spec-brief 0.15.0 or later says so, and the guard then holds that brief's writes\n`);
     expect(pretty.stdout).toContain(
       'outdated  spec-guard  spec-guard 0.29.0 is installed here; spec-harness needs 0.30.0 or later: npm install --save-dev @spec-family/spec-guard@latest',
     );

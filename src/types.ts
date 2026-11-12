@@ -35,6 +35,25 @@ export interface BriefRow {
   readonly tasks: { readonly total: number; readonly checked: number };
   readonly ready: boolean;
   readonly waitingOn: readonly string[];
+  /**
+   * What spec-brief could not read of the brief, as its list says: empty
+   * where it read the whole, and absent from a spec-brief that does not say,
+   * before 0.15.0 (versions.ts, PROBLEMS_SINCE).
+   */
+  readonly problems?: readonly BriefProblem[] | undefined;
+}
+
+/**
+ * Something of a brief spec-brief could not read, as `list --format json`
+ * reports it: its rule (`encoding`, `front-matter`, `field` or `glob`), the
+ * front-matter key, or `null` for the text or the block as a whole, the
+ * line, 1-based, and lint's words.
+ */
+export interface BriefProblem {
+  readonly rule: string;
+  readonly field: string | null;
+  readonly line: number;
+  readonly message: string;
 }
 
 /** A local branch: its name, and the short name git reads as it and nothing else, as a base is written. */

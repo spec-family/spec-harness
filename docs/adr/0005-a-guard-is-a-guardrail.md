@@ -2857,6 +2857,19 @@ warning being a change a run can see; `"deny"` is to be the default after
 it. The hint on any other write outside the scope says the archive reports
 every such file the round commits.
 
+*Amended 2026-11-12.* **A brief spec-brief cannot read whole.** spec-brief
+listed a front-matter field it could not parse as an empty list, so an
+inline list left open, a leading `/`, a YAML anchor, an unclosed block,
+TOML, UTF-16 or CR-only lines each left `protectedFiles` empty, and the
+guard, which reads the brief through spec-brief alone (ADR-0002), let every
+write through with no word (round 29's evaluation). spec-brief's list now
+says, in `problems`, what it could not read, with the field or `null` for
+the whole. Where a problem is the whole's, or `protectedFiles`' or
+`affectedFiles`', the guard refuses every write but one to the brief, as it
+refuses for a protection it cannot read, and the session's start says so.
+A refusal where there was a pass is a change a run can see; it is a
+security fix, which round 29's D1 lets past the D4 freeze.
+
 ## Consequences
 
 An agent that writes through a shell passes the guard and is caught at the

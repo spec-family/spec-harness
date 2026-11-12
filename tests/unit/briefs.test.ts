@@ -95,6 +95,23 @@ describe('spec-brief list documents', () => {
     });
   });
 
+  it('reads what spec-brief could not read of a brief, and nothing where it says nothing', () => {
+    const problems = [
+      { rule: 'field', field: 'protectedFiles', line: 6, message: '"protectedFiles" is an inline list with no closing ]' },
+      { rule: 'encoding', field: null, line: 1, message: 'the brief is UTF-16' },
+    ];
+    expect(parseBriefList(document([{ ...FULL, problems }]))).toEqual([{ ...FULL, problems }]);
+    // Read whole, and a spec-brief that cannot say, are told apart.
+    expect(parseBriefList(document([{ ...FULL, problems: [] }]))).toEqual([{ ...FULL, problems: [] }]);
+    expect(parseBriefList(document([FULL]))[0]).not.toHaveProperty('problems');
+    expect(refusal(document([{ ...FULL, problems: {} }]))).toBe('briefs[0].problems is not a list');
+    expect(refusal(document([{ ...FULL, problems: ['x'] }]))).toBe('briefs[0].problems[0] is not an object');
+    const shape = 'briefs[0].problems[0] is not a rule, a field or null, a line and a message';
+    for (const bad of [{ ...problems[0], rule: 1 }, { ...problems[0], field: 2 }, { ...problems[0], line: '6' }, { ...problems[0], message: null }, { rule: 'field', line: 1, message: 'm' }]) {
+      expect(refusal(document([{ ...FULL, problems: [bad] }])), JSON.stringify(bad)).toBe(shape);
+    }
+  });
+
   it('reads a wave, tasks and readiness only when they have their types', () => {
     const [read] = parseBriefList(
       document([{ ...FULL, wave: '2', tasks: { total: '3', checked: 1 }, ready: 'yes', title: null }]),

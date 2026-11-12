@@ -32,7 +32,7 @@ import type { Base } from './round.js';
 import type { BriefRow } from './types.js';
 import { declaredVersion, SiblingError } from './siblings.js';
 import { answerBeside, emptyValue, heldHookLine, isBlank, isClaudeHook, readHookLine, refusal, twoValues, unreadHookLine, type Command, type LineFault } from './usage.js';
-import { CLAUDE_CODE_MINIMUM, MINIMUM_VERSIONS, type ClaudeCodeCheck } from './versions.js';
+import { CLAUDE_CODE_MINIMUM, MINIMUM_VERSIONS, reportsUnread, unreportedSaid, type ClaudeCodeCheck } from './versions.js';
 import {
   activeBrief,
   answerOf,
@@ -350,8 +350,18 @@ async function sessionProblem(options: Options, io: CliIO, root: string, cwd: st
     const found = cwd === null ? null : await otherTree(named, cwd);
     const workspace = found === null ? named : await openFound(found, io, () => [named.root]);
     const active = await activeBrief(keptFor(workspace, session), options, io.env);
-    const { problem } = describeActive(active);
-    if (problem === null) return null;
+    const { brief, problem } = describeActive(active);
+    if (problem === null) {
+      // A brief spec-brief cannot read whole holds every write but one to
+      // itself, as a protection that cannot be read does (guard.ts).
+      if (brief === null) return null;
+      // A spec-brief before the field cannot say, and is said once here,
+      // where a write is decided as if it read the brief whole.
+      if (brief.problems === undefined) return unreportedSaid(null);
+      const { describeUnread, unreadScope } = await import('./guard.js');
+      const unread = unreadScope(brief);
+      return unread.length === 0 ? null : `${describeUnread(brief, unread)}, ${held}, but one to ${brief.file} itself and ${outside}: spec-brief lint names the problem`;
+    }
     if (closesRound(active)) return `${heldHookLine(problem).wrong}, so every write of this session is held, but ${outside}: the round is archived and ends when this branch merges, so write on the branch of a live brief; spec-harness doctor says more`;
     return `${heldHookLine(problem).wrong}, ${held}, but ${outside}: fix the brief or the branch before writing; spec-harness doctor says more`;
   } catch (error) {
@@ -813,7 +823,15 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
         '',
       ].join('\n'),
     );
-    for (const row of rows) io.stdout.write(`${row.state.padEnd(8)}  ${row.tool.padEnd(10)}  ${row.detail}\n`);
+    // A spec-brief that runs and cannot say which briefs it could not read
+    // whole, said once, under its line (ADR-0005). The rows are SIBLINGS',
+    // in its order, so its row is at its place there.
+    const lister = rows[SIBLINGS.indexOf('spec-brief')]!;
+    const unreported = lister.state === 'found' && lister.version !== null && !reportsUnread(lister.version) ? unreportedSaid(lister.version) : null;
+    for (const row of rows) {
+      io.stdout.write(`${row.state.padEnd(8)}  ${row.tool.padEnd(10)}  ${row.detail}\n`);
+      if (row === lister && unreported !== null) io.stdout.write(`${' '.repeat(22)}note: ${unreported}\n`);
+    }
   }
   // An outdated sibling is a problem to fix, where a missing optional one is
   // a choice; with none installed, the harness can check nothing; and so is

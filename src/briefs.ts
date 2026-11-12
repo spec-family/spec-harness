@@ -9,7 +9,7 @@
  */
 
 import { sameId } from './branch.js';
-import type { BriefRow } from './types.js';
+import type { BriefProblem, BriefRow } from './types.js';
 
 /**
  * The spec-brief JSON document versions this harness reads. Version 1 is the
@@ -44,6 +44,28 @@ function nullableString(value: unknown, where: string): string | null {
   return value;
 }
 
+/**
+ * What a row says spec-brief could not read of the brief, its `problems`,
+ * none where it read the whole; `undefined` where the row has no such
+ * field, as a spec-brief before the field prints none, which cannot say
+ * and is not read as saying none; and a refusal for one in a shape not
+ * read here, since a guard that passed over it would guard what
+ * spec-brief did not read.
+ */
+function problemsOf(value: unknown, where: string): BriefProblem[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new SiblingOutputError(`${where}.problems is not a list`);
+  return value.map((item, index) => {
+    const at = `${where}.problems[${index}]`;
+    if (!isObject(item)) throw new SiblingOutputError(`${at} is not an object`);
+    const { rule, field, line, message } = item;
+    if (typeof rule !== 'string' || typeof message !== 'string' || typeof line !== 'number' || (field !== null && typeof field !== 'string')) {
+      throw new SiblingOutputError(`${at} is not a rule, a field or null, a line and a message`);
+    }
+    return { rule, field, line, message };
+  });
+}
+
 /** Reads the document `spec-brief list --format json` prints. */
 export function parseBriefList(document: unknown): BriefRow[] {
   if (!isObject(document) || document['tool'] !== 'spec-brief' || document['command'] !== 'list') {
@@ -69,6 +91,7 @@ export function parseBriefList(document: unknown): BriefRow[] {
     if (phase !== 'live' && phase !== 'archived') throw new SiblingOutputError(`${where}.phase is "${String(phase)}"`);
     const tasks = row['tasks'];
     const wave = row['wave'];
+    const problems = problemsOf(row['problems'], where);
     return {
       id,
       file,
@@ -86,6 +109,7 @@ export function parseBriefList(document: unknown): BriefRow[] {
       },
       ready: row['ready'] === true,
       waitingOn: strings(row['waitingOn'] ?? [], `${where}.waitingOn`),
+      ...(problems === undefined ? {} : { problems }),
     };
   });
 }

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { brief, BRIEF_FILE, cleanup, cli, parsed, repository, temp, write, type Repository } from './helpers.js';
+import { brief, BRIEF_FILE, cleanup, cli, parsed, repository, siblings, SPEC_BRIEF, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -94,6 +94,43 @@ describe('hook claude', () => {
     expect(await claude(JSON.stringify({ cursor_version: '1.7.2', hook_event_name: 'preToolUse', tool_name: 'Write', tool_input: { file_path: protectedFile } }))).toEqual({ code: 0, stdout: said("it carries cursor_version, as Cursor's does"), stderr: '' });
     expect(await claude(JSON.stringify({ toolName: 'edit', toolArgs: JSON.stringify({ path: protectedFile }), cwd: repo.root }))).toEqual({ code: 0, stdout: said("it carries toolName, as GitHub Copilot's does"), stderr: '' });
     expect(await claude(hookInput('PreToolUse', 'apply_patch', { command: ['*** Begin Patch', '*** Update File: src/db/schema.ts', '*** End Patch', ''].join('\n') }))).toEqual({ code: 0, stdout: said("its tool apply_patch carries a patch, as Codex's apply_patch does"), stderr: '' });
+  });
+
+  it('holds every write but one to the brief, where spec-brief says it cannot read the brief whole, and says so as the session starts', async () => {
+    // spec-brief as installed, but for its list, which says a field it could not read.
+    const problems = [{ rule: 'field', field: 'protectedFiles', line: 6, message: '"protectedFiles" is an inline list with no closing ]' }];
+    const fake = temp();
+    write(
+      fake,
+      'spec-brief.mjs',
+      [
+        "import { spawnSync } from 'node:child_process';",
+        'const args = process.argv.slice(2);',
+        `const run = spawnSync(process.execPath, [${JSON.stringify(SPEC_BRIEF)}, ...args], { encoding: 'utf8' });`,
+        "if (args[0] === 'list' && run.status === 0) {",
+        '  const listed = JSON.parse(run.stdout);',
+        `  for (const row of listed.briefs) row.problems = ${JSON.stringify(problems)};`,
+        '  process.stdout.write(JSON.stringify(listed));',
+        '} else process.stdout.write(run.stdout);',
+        'process.stderr.write(run.stderr);',
+        'process.exit(run.status ?? 1);',
+        '',
+      ].join('\n'),
+    );
+    const torn = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }), 'src/a.ts': 'a;\n' }, { tools: { ...siblings(), 'spec-brief': ['node', join(fake, 'spec-brief.mjs')] } });
+    torn.git('checkout', '-q', '-b', 'brief/001-rotate');
+    const said = 'spec-brief cannot read brief 001 whole, so what it protects cannot be told: "protectedFiles" is an inline list with no closing ] (line 6)';
+    const held = await claude(hookInput('PreToolUse', 'Write', { file_path: join(torn.root, 'src', 'a.ts') }, torn.root), { cwd: torn.root });
+    expect(JSON.parse(held.stdout).hookSpecificOutput).toEqual({
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `spec-harness: ${said}. Next: fix ${BRIEF_FILE}, which a write may still reach (spec-brief lint names the problem).`,
+    });
+    expect(await claude(hookInput('PreToolUse', 'Edit', { file_path: join(torn.root, BRIEF_FILE) }, torn.root), { cwd: torn.root })).toEqual({ code: 0, stdout: '', stderr: '' });
+    const started = await claude(JSON.stringify({ session_id: 's', cwd: torn.root, hook_event_name: 'SessionStart', source: 'startup' }), { cwd: torn.root, env: { CLAUDE_PROJECT_DIR: torn.root } });
+    expect(JSON.parse(started.stdout).systemMessage).toBe(
+      `spec-harness: ${said}, so every write of this session is held until it is mended, but one to ${BRIEF_FILE} itself and one to a file outside every work tree of the repository: spec-brief lint names the problem`,
+    );
   });
 
   it('ignores a tool that writes no file, without asking spec-brief', async () => {
