@@ -324,8 +324,10 @@ const PATCH_FILE = /^\s*\*\*\* (?:Add File|Delete File|Update File|Move to):\s*(
 export function patchPaths(patch: string): string[] {
   const paths: string[] = [];
   for (const line of patch.split('\n')) {
-    const path = PATCH_FILE.exec(line)?.[1]!.trimEnd();
-    if (path !== undefined && !paths.includes(path)) paths.push(path);
+    const header = PATCH_FILE.exec(line);
+    if (header === null) continue;
+    const path = header[1]!.trimEnd();
+    if (!paths.includes(path)) paths.push(path);
   }
   return paths;
 }
