@@ -52,6 +52,16 @@ cannot turn a run red. The family's policy is
   does. The README and the guard reference say so
   ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md)).
 
+- **A path through a share on this machine no longer gets past the guard
+  on Windows.** `\\localhost\C$\...`, the same through `127.0.0.1` or the
+  machine's own name, and `\\?\UNC\localhost\C$\...`, name a file of the
+  repository that Node writes to, and the hook let the write through, `guard`
+  said it was outside the repository, and `check_path` allowed it. A
+  drive's share is now read as the drive, and a path through any other
+  share on this machine is refused, since it can be the repository by
+  another name
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such
@@ -59,6 +69,12 @@ cannot turn a run red. The family's policy is
   says the archive reports every one the round commits, and on a file the
   guard runs on, what the file is and that `protectHarness` holds such a
   write.
+
+- `hook claude` says, in one line to the person, a `Write`, `Edit`,
+  `MultiEdit` or `NotebookEdit` that names no file it writes, an empty or
+  non-string `file_path` or no `tool_input`, where it passed with no word;
+  and reads a question past a byte order mark, which it read as no JSON and
+  let the write through.
 
 ## 0.25.0
 

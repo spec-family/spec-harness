@@ -57,9 +57,9 @@ import {
 } from './configure.js';
 import { readRules, renderContext, type CitedDocument, type ContextPacket, type Rules } from './context.js';
 import type { DocumentReader } from './document.js';
-import { isDirectory, isFile, reachedBy, readJsonObject, readText, repositoryPath, stateDirectory, writeAtomic } from './fs.js';
+import { isDirectory, isFile, localSpelling, reachedBy, readJsonObject, readText, repositoryPath, stateDirectory, writeAtomic } from './fs.js';
 import { blameLine, changes, commonDirectory, holdsPath, isShallow, isUncommitted, mergeBase, remoteDefault, revision, show, verifyCommit, workTreeRoot } from './git.js';
-import { decide, decideWritten, type Decision, type VerifiedRuling } from './guard.js';
+import { decide, decideWritten, heldForShare, type Decision, type VerifiedRuling } from './guard.js';
 import { diffManifest, ecosystemOf, readManifestNames, type DependencyChange, type InstallScriptChange } from './manifests.js';
 import {
   addRulingRow,
@@ -202,11 +202,18 @@ export async function checkPaths(
   // Each path as it reads and as the system writes it, which a link can make
   // two files: the last a path reaches is the one it is written to, or the
   // one it reads as where that is all it reaches (ADR-0005).
-  const resolved = given.map((path) => ({ given: path, path: repositoryPath(path, workspace.root, cwd), written: repositoryPath(reachedBy(path, cwd).at(-1)!, workspace.root, cwd) }));
+  // A share on this machine is read as the drive it names, and one that
+  // names no drive is held: it can be the repository by another name.
+  const resolved = given.map((path) => {
+    const local = localSpelling(path, workspace.platform);
+    const read = local === null ? null : { path: repositoryPath(local, workspace.root, cwd), written: repositoryPath(reachedBy(local, cwd).at(-1)!, workspace.root, cwd) };
+    return { given: path, read };
+  });
   const decideAll = (rulings: readonly VerifiedRuling[]): Decision[] =>
-    resolved.map(({ path, given: g, written }) => {
-      const input = { path, given: g, brief, noBrief, rulings, outOfScope: workspace.config.outOfScope, protectHarness: workspace.config.protectHarness, signers: workspace.config.rulings.allowedSigners };
-      return decideWritten(decide(input), { ...input, path: written });
+    resolved.map(({ given: g, read }) => {
+      if (read === null) return heldForShare(g);
+      const input = { path: read.path, given: g, brief, noBrief, rulings, outOfScope: workspace.config.outOfScope, protectHarness: workspace.config.protectHarness, signers: workspace.config.rulings.allowedSigners };
+      return decideWritten(decide(input), { ...input, path: read.written });
     });
   const first = decideAll([]);
   // Rulings cost the reader of a brief, and a blame and a signature check

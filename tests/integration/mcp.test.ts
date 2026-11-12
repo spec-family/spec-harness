@@ -164,6 +164,20 @@ describe('the tools', () => {
     expect(decisions.map((d) => d.verdict)).toEqual(['deny', 'allow', 'warn']);
   });
 
+  it('check_path holds a path through a share on this machine that names no drive, where paths are read as Windows reads them', async () => {
+    const asWindows = tools({ ...workspace, platform: 'win32' }, {}).find((candidate) => candidate.descriptor.name === 'check_path')!;
+    const outcome = await asWindows.call({ paths: ['//localhost/work/src/a.ts'] });
+    expect(outcome.text).toBe(
+      "deny: //localhost/work/src/a.ts names a share on this machine, which can be the repository by another name, and the guard cannot tell which directory it is. Next: write the path as a local one, the drive and the directories, or through the drive's own share, such as C$",
+    );
+  });
+
+  it.skipIf(process.platform !== 'win32')("check_path reads a drive's share on this machine as the drive, as the hook does", async () => {
+    const local = join(repo.root, 'src', 'db', 'schema.ts');
+    const outcome = await tool('check_path').call({ paths: [`//localhost/${local.slice(0, 1)}$${local.slice(2)}`] });
+    expect(outcome.text).toMatch(/^deny: brief 001 does not empower this round to change src\/db\/schema\.ts /);
+  });
+
   it('check_path refuses arguments it does not take', async () => {
     expect(await tool('check_path').call({ paths: [] })).toEqual({ text: '"paths" must be a non-empty array of strings.', isError: true });
     expect(await tool('check_path').call({ paths: 'a.ts' })).toEqual({ text: '"paths" must be a non-empty array of strings.', isError: true });

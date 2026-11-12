@@ -5,6 +5,7 @@
 
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, type Stats } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 
 import type { BriefInputs } from './briefs.js';
@@ -257,6 +258,49 @@ export function mainWorkTree(commonDir: string): string | null {
 /** Whether a `.git` stands in `directory`, a repository's or the file that names one, as at the top of a work tree. */
 export function holdsGit(directory: string): boolean {
   return existsSync(join(directory, '.git'));
+}
+
+/**
+ * The names a UNC path calls this machine by: the name every Windows
+ * machine answers to, its loopback addresses, and `::1` as a UNC path
+ * spells it. The machine's own name is the caller's to add.
+ */
+const LOOPBACK = /^(?:localhost|127(?:\.\d{1,3}){1,3}|--1\.ipv6-literal\.net)$/i;
+
+/** A UNC path, a server and a share and the rest, written with two separators or after `?\UNC\` or `.\UNC\`, in either separator. */
+const UNC = /^[\\/]{2}(?:[?.][\\/]UNC[\\/])?([^\\/]+)[\\/]+([^\\/]+)(.*)$/i;
+
+/**
+ * What a UNC path names where it names this machine: the local path of a
+ * drive's administrative share, the share `C$` of localhost being the
+ * drive `C:`, or `'share'` for any other share on it, whose directory only
+ * the share's own configuration names; `null` for a path that names no
+ * share on this machine. Node writes through each to the local file
+ * (round 29's evaluation, on Windows 11), where the guard read the path
+ * as one outside the repository and let the write through (ADR-0005).
+ */
+export function throughShare(path: string, host: string): { readonly local: string } | 'share' | null {
+  const unc = UNC.exec(path);
+  if (unc === null) return null;
+  const server = unc[1]!;
+  if (!LOOPBACK.test(server) && server.toLowerCase() !== host.toLowerCase()) return null;
+  const drive = /^([a-z])\$$/i.exec(unc[2]!);
+  if (drive === null) return 'share';
+  const rest = unc[3]!;
+  return { local: `${drive[1]!}:${rest === '' ? '\\' : rest}` };
+}
+
+/**
+ * A path as the guard decides it: on Windows, a drive's share on this
+ * machine as the local path it names, and `null` for another share on it,
+ * which can be the repository by another name; elsewhere, and for every
+ * other path, the path as given.
+ */
+export function localSpelling(path: string, platform: NodeJS.Platform = process.platform, host: string = hostname()): string | null {
+  if (platform !== 'win32') return path;
+  const through = throughShare(path, host);
+  if (through === null) return path;
+  return through === 'share' ? null : through.local;
 }
 
 /**
