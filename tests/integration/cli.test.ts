@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { HELP, run } from '../../src/cli.js';
 import { mergeClaudeSettings, mergeMcp, reportHooks } from '../../src/configure.js';
-import { BIN, brief, BRIEF_FILE, claudeOf, cleanup, cli, git, installFake, installHarness, installPlugin, parsed, repository, repository as aRepository, ROOT, siblings, SPEC_BRIEF, spawnBin, temp, withEnvironment, write, type Repository } from './helpers.js';
+import { BIN, brief, BRIEF_FILE, claudeOf, cleanup, cli, git, installFake, installHarness, installPlugin, parsed, repository, repository as aRepository, ROOT, siblings, SPEC_BRIEF, spawnBin, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -1795,9 +1795,9 @@ describe('doctor on the rest of what a ruling and a commit need', () => {
     expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(true);
     repo.git('config', 'user.signingkey', join(keys, 'id.pub'));
     expect(note((await cli(['doctor'], repo.root)).stdout)).toBe(true);
-    // Under the home directory, as ~ names it.
+    // Under the home directory, as ~ names it to git.
     repo.git('config', 'user.signingkey', '~/id');
-    expect(note((await withEnvironment({ HOME: keys, USERPROFILE: keys }, () => cli(['doctor'], repo.root))).stdout)).toBe(true);
+    expect(note((await cli(['doctor'], repo.root, { env: { HOME: keys } })).stdout)).toBe(true);
     // A key whose file cannot be read is none.
     repo.git('config', 'user.signingkey', join(keys, 'gone'));
     const gone = await cli(['doctor'], repo.root);

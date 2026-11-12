@@ -690,12 +690,14 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
  * with an SSH key: the key `user.signingkey` names, after `key::` or in the
  * public key's file, beside a private key's or named itself; `null` where
  * git signs no commit unasked, signs another way, or the key cannot be read.
+ * A `~` is the home git reads it as, `HOME`, which Git for Windows sets
+ * where it is not, as the account's.
  */
-async function signingKey(root: string, read: (text: string) => { readonly keyType: string; readonly key: string } | null): Promise<{ readonly keyType: string; readonly key: string } | null> {
+async function signingKey(root: string, env: CliIO['env'], read: (text: string) => { readonly keyType: string; readonly key: string } | null): Promise<{ readonly keyType: string; readonly key: string } | null> {
   const { every, format, key } = await signingConfig(root);
   if (!every || format !== 'ssh' || key === null) return null;
   if (key.startsWith('key::')) return read(key.slice('key::'.length));
-  const path = key.startsWith('~') ? join(homedir(), key.slice(1)) : resolve(root, key);
+  const path = key.startsWith('~') ? join(env['HOME'] ?? homedir(), key.slice(1)) : resolve(root, key);
   // The public key beside a private key's path; where none stands there,
   // the path is read as the public key's own.
   const text = (await readText(`${path}.pub`)) ?? (await readText(path));
@@ -822,7 +824,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   const plain = notFido2(read.signers);
   // And whether git signs every commit here with one of them, which makes
   // every commit an agent makes under the account a signed one (ADR-0006).
-  const everyCommit = describeSigningEveryCommit(read.signers, await signingKey(workspace.root, signingKeyOf));
+  const everyCommit = describeSigningEveryCommit(read.signers, await signingKey(workspace.root, io.env, signingKeyOf));
   const signerNotes = [describeSignerKeys(plain), everyCommit, ...read.problems.map(describeSignerProblem)].filter((note): note is string => note !== null);
   const plugin = answerOf(pluginAsked);
   // The plugin and init's entries both on: Claude Code runs every guard twice
