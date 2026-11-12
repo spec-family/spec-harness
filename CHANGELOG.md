@@ -155,6 +155,11 @@ cannot turn a run red. The family's policy is
   signed by an allowed signer, and a ruling row it writes counts. A note,
   which fails nothing.
 
+- **`--no-color` on every command, and `--format human`** as another name
+  for `pretty`, as the family's other tools take them (round 29's D8).
+  spec-harness prints no colour, so `--no-color` changes nothing; refused,
+  it stopped a line written for the whole family with exit 2.
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such

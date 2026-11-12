@@ -19,6 +19,8 @@ An option, an argument or a value that is given and names nothing is refused: ex
   | `hook` | `--brief`, `--base`, `--root` |
   | `mcp` | `--root` |
 
+  Every command also takes `--no-color`, as every tool of the family does; spec-harness prints no colour, so it changes nothing. `--format human` is `--format pretty` by the name spec-guard and spec-graph give it.
+
   `init` chooses the base itself, and the server is told the brief and the base by each call, so neither takes `--base` or `--brief`: taking one would say the base or the brief had been set.
 - **An option beside one that leaves it unread.** `escalate --list` and `escalate --show <id>` print what waits and raise nothing, and beside either only `--root` and `--format` are read: `escalate --list does not take --path; beside --list its options are --root and --format`. A request spelled out beside `--list` printed the list, exit 0, and was never raised.
 - **A brief named twice.** `context`, `rulings`, `audit` and `probe` take the brief as their argument or as `--brief`, and refuse the two together, whatever they hold: `audit was given the brief twice, as its argument "012" and as --brief "013"; give one of them`. The argument won with no word. `SPEC_BRIEF` and the branch beside either are the [order](rounds.md#which-brief) as it stands.

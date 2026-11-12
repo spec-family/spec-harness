@@ -151,6 +151,13 @@ describe('an option a command does not read', () => {
     expect(refused(['mcp', '--brief', '012'])).toBe('mcp does not take --brief; its only option is --root');
   });
 
+  it('is never --no-color, which every command takes, as every tool of the family does (D8)', () => {
+    for (const argv of [['doctor'], ['init'], ['mcp'], ['hook', 'git'], ['audit'], ['guard', 'a.ts'], ['escalate', '--list'], ['rule', 'E-1-1', '--allow', '--note', 'n']]) {
+      expect(refused([...argv, '--no-color']), argv.join(' ')).toBeNull();
+    }
+    expect(refused(['mcp', '--no-color', '--brief', '012'])).toBe('mcp does not take --brief; its only option is --root');
+  });
+
   it('is every option but those the table gives the command, and none of those', () => {
     for (const [command, takes] of Object.entries(TAKES)) {
       for (const [option, given] of Object.entries(GIVEN)) {
@@ -597,7 +604,7 @@ describe("what Claude Code's hook does with its own line", () => {
 
   it('is off for a line the parser refuses, wherever on the line the fault stands', () => {
     const read = (words: readonly string[]) => claudeHookLine(words, parseOptions, '/here', only('/here'));
-    const wrong = "the hook's line cannot be read (--format must be pretty, json, gitlab, sarif or github, not \"xml\")";
+    const wrong = "the hook's line cannot be read (--format must be pretty or human, json, gitlab, sarif or github, not \"xml\")";
     expect(read(['hook', 'claude', '--format', 'xml'])).toEqual({ state: 'off', fault: { wrong, mend: MEND_LINE } });
     expect(read(['--format', 'xml', 'hook', 'claude'])).toEqual({ state: 'off', fault: { wrong, mend: MEND_LINE } });
     expect(read(['hook', 'claude', '--at', 'sideways'])).toMatchObject({ state: 'off', fault: { wrong: "the hook's line cannot be read (--at must be base, head or both, not \"sideways\")" } });

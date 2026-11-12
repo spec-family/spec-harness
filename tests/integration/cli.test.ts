@@ -31,7 +31,7 @@ describe('the command line', () => {
     const flag = await cli(['guard', '--frobnicate'], ROOT);
     expect(flag.code).toBe(2);
     expect(flag.stderr).toContain("Unknown option '--frobnicate'");
-    expect(await cli(['audit', '--format', 'xml'], ROOT)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: --format must be pretty, json, gitlab, sarif or github, not "xml"\n' });
+    expect(await cli(['audit', '--format', 'xml'], ROOT)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: --format must be pretty or human, json, gitlab, sarif or github, not "xml"\n' });
   });
 
   it('names every command in its help', () => {
@@ -1131,7 +1131,7 @@ describe("doctor on the line of Claude Code's hook in its settings (ADR-0005)", 
     expect(result.stdout).toContain(
       [
         `claude  init's entries: the guard hooks in ${userFile}, the guard hooks in .claude/settings.json, the guard hooks in .claude/settings.local.json`,
-        `        "hook claude --format xml" in ${userFile}: the hook's line cannot be read (--format must be pretty, json, gitlab, sarif or github, not "xml"), so the guard is off and no write is checked; mend it in Claude Code's settings, where init writes "hook claude" and nothing after it`,
+        `        "hook claude --format xml" in ${userFile}: the hook's line cannot be read (--format must be pretty or human, json, gitlab, sarif or github, not "xml"), so the guard is off and no write is checked; mend it in Claude Code's settings, where init writes "hook claude" and nothing after it`,
         // The hook says the line with exit 0, which is no failure: the field holds no write for it.
         `        "hook claude --format xml" in ${userFile} sets onFailure to "block", so Claude Code 2.1.295 or later holds a write when the hook fails, where it lets the write go ahead without it: by not starting, as where the script on its line is not there, or by running past its timeout`,
         '        "hook claude --base main" in .claude/settings.json is more than init writes, and guards: the hook reads the line',

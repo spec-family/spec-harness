@@ -66,6 +66,15 @@ describe('options', () => {
     expect(parseOptions([]).command).toBeUndefined();
   });
 
+  it('reads human as pretty, and takes --no-color, as every tool of the family does (D8)', () => {
+    expect(parseOptions(['audit', '--format', 'human']).format).toBe('pretty');
+    expect(parseOptions(['doctor', '--format', 'pretty']).format).toBe('pretty');
+    const plain = parseOptions(['guard', 'a.ts', '--no-color']);
+    expect(plain.given).toEqual(['no-color']);
+    expect(plain.format).toBe('pretty');
+    expect(() => parseOptions(['guard', '--format', 'Human'])).toThrow('--format must be pretty or human, json, gitlab, sarif or github, not "Human"');
+  });
+
   it('reads every flag', () => {
     const options = parseOptions([
       'escalate',
@@ -166,8 +175,8 @@ describe('options', () => {
   });
 
   it('refuses a format or a probe position it does not know', () => {
-    expect(usage(['audit', '--format', 'xml'])).toBe('--format must be pretty, json, gitlab, sarif or github, not "xml"');
-    expect(usage(['audit', '--format', 'SARIF'])).toBe('--format must be pretty, json, gitlab, sarif or github, not "SARIF"');
+    expect(usage(['audit', '--format', 'xml'])).toBe('--format must be pretty or human, json, gitlab, sarif or github, not "xml"');
+    expect(usage(['audit', '--format', 'SARIF'])).toBe('--format must be pretty or human, json, gitlab, sarif or github, not "SARIF"');
     expect(usage(['probe', '--at', 'tip'])).toBe('--at must be base, head or both, not "tip"');
   });
 

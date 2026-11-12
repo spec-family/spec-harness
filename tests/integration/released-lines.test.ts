@@ -366,8 +366,8 @@ describe("Claude Code's hook, on a line the parser cannot read", () => {
 
   /** Lines that parse, and name a format or a probe position that is none: the harness's own words. */
   const NONE: readonly (readonly [readonly string[], string])[] = [
-    [['--format', 'xml'], '--format must be pretty, json, gitlab, sarif or github, not "xml"'],
-    [['--format', ''], '--format must be pretty, json, gitlab, sarif or github, not ""'],
+    [['--format', 'xml'], '--format must be pretty or human, json, gitlab, sarif or github, not "xml"'],
+    [['--format', ''], '--format must be pretty or human, json, gitlab, sarif or github, not ""'],
     [['--format', 'gitlab'], '--format gitlab is for audit and premises; hook prints pretty or json'],
     [['--at', 'sideways'], '--at must be base, head or both, not "sideways"'],
   ];
@@ -465,7 +465,7 @@ describe("Claude Code's hook, on a line the parser cannot read", () => {
     expect(await cli(['hook', 'git', '--format', 'xml'], repo.root, { stdin: QUESTION() })).toEqual({
       code: 2,
       stdout: '',
-      stderr: 'spec-harness: --format must be pretty, json, gitlab, sarif or github, not "xml"\n',
+      stderr: 'spec-harness: --format must be pretty or human, json, gitlab, sarif or github, not "xml"\n',
     });
     // A line that does not say whose hook it is, is nobody's: the word claude taken for a value, misspelt, or left out.
     for (const argv of [['hook', '--brief', 'claude', '--nope'], ['hook', 'claud', '--nope'], ['hook', '--nope'], ['guard', 'claude', '--nope'], ['--nope']]) {

@@ -115,14 +115,16 @@ Options:
                       .spec-harness.json, then the remote's default branch. For context,
                       guard, hook, rulings, audit, probe and doctor.
   --root <dir>        Run from another directory, which must exist. For every command.
-  --format <fmt>      pretty or json; audit and premises also gitlab, sarif or github.
-                      For every command but hook and mcp.
+  --format <fmt>      pretty, or human, its other name, or json; audit and premises also
+                      gitlab, sarif or github. For every command but hook and mcp.
   --strict            Warnings fail the run. For guard, audit, premises and doctor.
   --if-round          Where nothing names a brief, say there is no round and exit 0,
                       not 2. For audit.
   --require-measured  Fail where the round could not be measured, or its base and allowed
                       signers were read from what the round can change. For audit.
   --block-on-failure  onFailure "block" on init's entries but the one as a turn ends. For init.
+  --no-color          Taken by every command, as every tool of the family takes it;
+                      spec-harness prints no colour.
   --help, --version   One of the two: both on one line are refused.
 
 An option a command does not read, an argument it does not take, an option or an
