@@ -491,16 +491,11 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
     const asked = await writeAsked(io);
     if (typeof asked === 'number') return asked;
     // A share on this machine is read as the drive it names, before
-    // anything decides where the path is; a write through one that names no
-    // drive is held, since it can be the repository by another name. The
-    // platform is the one the paths are read as, the process's where the
-    // caller names none.
-    const local = asked.paths.map((path) => localSpelling(path, io.platform));
-    if (asked.event === 'PreToolUse' && local.includes(null)) {
-      const { heldForShare } = await import('./guard.js');
-      return answer(io, claudeResponse(asked.event, asked.paths.filter((_, at) => local[at] === null).map(heldForShare)));
-    }
-    const request = { ...asked, paths: local.map((path, at) => path ?? asked.paths[at]!) };
+    // anything decides where the path is; one that names no drive is kept
+    // as written, and held where it is decided (checkPaths), since it can
+    // be the repository by another name. The platform is the one the paths
+    // are read as, the process's where the caller names none.
+    const request = { ...asked, paths: asked.paths.map((path) => localSpelling(path, io.platform) ?? path) };
     // The root the line gives, or what is wrong with it: read as `doctor`
     // reads the line where it finds it in a settings file (usage.ts).
     const line = readHookLine(options.root, io.cwd, isDirectory);
