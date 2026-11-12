@@ -1497,6 +1497,21 @@ brought quickest first, which cost the shard of `src/commands.ts` and
 `src/setup.ts` a quarter more than its files added up to (amended
 2026-10-14). The sweep of this change reads whether that holds on vitest 5.
 
+The sweep of 7dda409 (run 43277149524), whose source is that of the
+amendment before, came to 98.11% with 250 undetected, where that source came
+to 98.10% with 251 over eight shards: only `src/rulings.ts` 197, a static
+mutant its comment calls equivalent, moved, from survived to a timeout, at
+its timeout's edge as `src/reader.ts` 19 and `src/config.ts` 257 are. Its
+longest job took 32.3 minutes, and its jobs 255.5 runner-minutes, where the
+same source took 264.3 over eight shards. Seven shards came within the
+table's minutes or at most half a minute over them; the shards of
+`src/sandbox.ts` and of `src/workspace.ts` came 6.5 and 3.5 under their
+least. On vitest 5 a file's static minutes still move with its shard's other
+files, `src/sandbox.ts` from 5.1 to none and `src/rulings.ts` from 6.2 to
+13.6, but the sweep's do not: 122.5, within the six sweeps' 121.5 to 128.8,
+and no shard took more than half a minute over its files' most, where vitest
+4 cost one a quarter more. The next re-measure adds this sweep's timelines.
+
 *Amended 2026-11-13.* **A pull request's full sweep is incremental.** The
 amendment of 2026-10-12 has a pull request that changes what only the full
 sweep reaches swept before it merges, and the sweep was the whole of it:
