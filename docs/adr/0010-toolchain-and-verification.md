@@ -1453,3 +1453,46 @@ same source: b22369c (full run 43235294813, core sweep in CI run
   against the job's 60.** Main's sweeps of the same sources took 263.0 and
   250.1, their slowest 52.0 and 44.9: the long shard is main's, not this
   change's, and the next amendment levels the shards.
+
+*Amended again 2026-11-12.* **Nine shards, levelled on the sweeps with the
+record shared.** The table of 2026-10-14 was made on 104 to 111 minutes of
+files over eight shards. Six sweeps took 209 to 227: three sources, each
+swept by main and by the pull request of the amendment before, fd53349
+(runs 43227686328 and 43235294813), bbaa54c (runs 43241750900 and
+43250316312) and 5888d9f (runs 43259163147 and 43264919098). `src/cli.ts`
+took 15.0 to 22.6 minutes where it took 2.4 to 4.5, and `src/siblings.ts`,
+`src/git.ts`, `src/commands.ts` and `src/fs.ts` twice and more what they
+took. The shard of `src/cli.ts`, `src/workspace.ts` and four smaller files
+took 34.6 to 50.9 minutes for its files and up to 56.6 as a job, against
+the job's 60; the shard of `src/branch.ts` and `src/reader.ts` took 6.3 to
+8.7.
+
+`src/round.ts` takes 22.5 to 28.5 minutes alone, and `src/siblings.ts`,
+`src/git.ts`, `src/cli.ts` and `src/commands.ts` up to 26 each; no shard
+takes less than the one that holds one of them. Levelled over eight
+shards, the longest came to 31 to 34 minutes in those sweeps and the last
+to about 30, where the last is kept no longer than the others: the files
+nobody lists are mutated there, and the sources grow there unasked. Over
+nine, eight listed shards are each built round one of the five or
+`src/sandbox.ts`, `src/fs.ts` or `src/workspace.ts`, and their files took
+17.5 to 28.5 minutes in the six sweeps, `src/round.ts` alone the longest;
+the last holds `src/server.ts`, `src/configure.ts`, `src/setup.ts` and the
+small files, 18.2 to 26.1. Between two sweeps of one source a large file
+took up to a third more in one than in the other, and a small one up to
+nine tenths more, with the runner, so the table is levelled on the most
+each shard took, not on one sweep. `src/round.ts` keeps a shard to itself
+as the integration suite grows round it: spec-harness#167 added a suite
+that runs it at each anchor. A ninth job costs a sweep its start and
+initial run, about five minutes, and the table puts the longest job at
+about 34 minutes, where it was 57.
+
+`scripts/mutation-shards.mjs` has the table and each file's least and most
+minutes, and `mutation.yml` the ninth entry in its matrix, which
+`tests/mutation-shards.test.ts` holds to the table. The job's 60 minutes
+stay: the comment beside them now says a shard that keeps passing 39, five
+minutes over the longest the table expects, means re-measuring. A file's
+minutes add up where it goes for its mutants that are not static; for the
+static ones beside it, vitest 4 ran the files the shard's other sources
+brought quickest first, which cost the shard of `src/commands.ts` and
+`src/setup.ts` a quarter more than its files added up to (amended
+2026-10-14). The sweep of this change reads whether that holds on vitest 5.
