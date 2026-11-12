@@ -87,6 +87,8 @@ describe('what the audit measured', () => {
   it('describes each rule it and premises report, for a reader of SARIF, in a sentence of its own', () => {
     expect(Object.keys(RULES)).toEqual([
       'unmeasured',
+      'harness-config-changed',
+      'harness-config-unanchored',
       'archive-unchecked',
       'assertions-unchecked',
       'assertion-unreadable',
@@ -326,6 +328,67 @@ describe('what could not be measured is a finding, never a silence', () => {
   it('reports no manifest name when every name was read, or none was said', () => {
     expect(audit(input({ dependencies: { changes: [], unread: [], unreadNames: [], rootedNames: [] } })).findings).toEqual([]);
     expect(audit(input({ dependencies: { changes: [], unread: [] } })).findings).toEqual([]);
+  });
+});
+
+describe('what the round is measured by (ADR-0006)', () => {
+  const at = 'origin/main';
+
+  it('warns of each key the work tree configures otherwise, on the configuration file, by the key', () => {
+    const report = audit(
+      input({
+        configChanges: [
+          { key: 'base', workTree: 'evil', measured: 'main', at },
+          { key: 'rulings.allowedSigners', workTree: 'signers', measured: '.github/allowed_signers', at },
+        ],
+      }),
+    );
+    expect(report.findings).toEqual([
+      {
+        rule: 'harness-config-changed',
+        severity: 'warning',
+        message: "the work tree's .spec-harness.json measures the round from evil, where origin/main has main: the round is measured from main",
+        hint: 'a change to "base" counts once it is on the base: merge it there first, or take it out of the round',
+        file: '.spec-harness.json',
+        subject: 'base',
+      },
+      {
+        rule: 'harness-config-changed',
+        severity: 'warning',
+        message: "the work tree's .spec-harness.json reads the allowed signers from signers, where origin/main has .github/allowed_signers: rulings are verified against .github/allowed_signers",
+        hint: 'a change to "rulings.allowedSigners" counts once it is on the base: merge it there first, or take it out of the round',
+        file: '.spec-harness.json',
+        subject: 'rulings.allowedSigners',
+      },
+    ]);
+    expect(report.counts).toEqual({ error: 0, warning: 2, note: 0 });
+  });
+
+  it('fails what was not measured where --require-measured asks, and nothing else', () => {
+    const unmeasured = 'main and HEAD are the same commit: there is nothing to measure';
+    const scope = { rule: 'scope-unmeasured', severity: 'warning' as const, message: 'affectedFiles went unchecked', hint: 'h', file: FILE, line: 3 };
+    const other = { rule: 'out-of-scope', severity: 'warning' as const, message: 'm', hint: 'h', file: FILE, line: 4 };
+    const given = input({ unmeasured, archive: { blocking: [], warnings: [scope, other] }, configChanges: [{ key: 'base', workTree: 'evil', measured: 'main', at }] });
+    const severities = (report: ReturnType<typeof audit>): string[] => report.findings.map((f) => `${f.rule} ${f.severity}`);
+    expect(severities(audit(given))).toEqual(['unmeasured warning', 'harness-config-changed warning', 'archive/scope-unmeasured warning', 'archive/out-of-scope warning']);
+    const required = audit({ ...given, requireMeasured: { unanchored: null } });
+    expect(severities(required)).toEqual(['unmeasured error', 'harness-config-changed warning', 'archive/scope-unmeasured error', 'archive/out-of-scope warning']);
+    expect(required.counts).toEqual({ error: 2, warning: 2, note: 0 });
+    expect(required.measured.changes).toBe('unmeasured');
+  });
+
+  it('fails a run measured by what the round can change, where --require-measured asks', () => {
+    const where = "the work tree's .spec-harness.json and the merge base of HEAD with the base it names";
+    expect(audit(input({ requireMeasured: { unanchored: where } })).findings).toEqual([
+      {
+        rule: 'harness-config-unanchored',
+        severity: 'error',
+        message: `the round's base and allowed signers were read from ${where}, which the round can change`,
+        hint: "pass --base naming the branch rounds merge into as the forge has it, such as --base origin/main, or record the remote's default branch: git remote set-head origin --auto",
+        file: '.spec-harness.json',
+      },
+    ]);
+    expect(audit(input({ requireMeasured: { unanchored: null } })).findings).toEqual([]);
   });
 });
 

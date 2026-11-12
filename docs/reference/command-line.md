@@ -10,7 +10,7 @@ An option, an argument or a value that is given and names nothing is refused: ex
   | --- | --- |
   | `context`, `rulings` | `--brief`, `--base`, `--root`, `--format` |
   | `guard`, `doctor` | `--brief`, `--base`, `--root`, `--format`, `--strict` |
-  | `audit` | `--brief`, `--base`, `--root`, `--format`, `--strict`, `--if-round` |
+  | `audit` | `--brief`, `--base`, `--root`, `--format`, `--strict`, `--if-round`, `--require-measured` |
   | `probe` | `--brief`, `--base`, `--root`, `--format`, `--id`, `--at` |
   | `premises` | `--brief`, `--root`, `--format`, `--strict` |
   | `escalate` | `--brief`, `--root`, `--format`, `--path`, `--reason`, `--option`, `--recommend`, `--list`, `--show` |

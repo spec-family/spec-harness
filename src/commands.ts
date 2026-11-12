@@ -165,7 +165,7 @@ export async function auditCommand(options: Options, io: CliIO): Promise<number>
     throw new UsageError(`${describeActive(active).problem}; ${describeClosedRound(closed)}`);
   }
   const brief = briefNamed(active);
-  const result = await runAudit(workspace, brief, reader, options.base);
+  const result = await runAudit(workspace, brief, reader, options.base, options.requireMeasured);
   const { counts, findings, measured } = result.report;
   if (options.format === 'json') {
     io.stdout.write(

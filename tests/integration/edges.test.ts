@@ -166,6 +166,10 @@ describe('state and files', () => {
     expect(loaded.file).toBe(join(root, '.spec-harness.json'));
     writeFileSync(join(root, '.spec-harness.json'), '{');
     await expect(loadConfig(root)).rejects.toBeInstanceOf(ConfigError);
+    await expect(loadConfig(root)).rejects.toThrow(/^\.spec-harness\.json is not valid JSON: /);
+    // A byte order mark before the JSON, as Windows editors write it, is read past.
+    writeFileSync(join(root, '.spec-harness.json'), String.fromCharCode(0xfeff) + '{"outOfScope":"ask"}');
+    expect((await loadConfig(root)).config.outOfScope).toBe('ask');
   });
 });
 

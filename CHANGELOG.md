@@ -89,6 +89,38 @@ cannot turn a run red. The family's policy is
   stays 0.12.0, so an earlier one still runs, as before
   ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
 
+- **A round no longer chooses its own base or its allowed signers.**
+  `base` and `rulings.allowedSigners` were read from the work tree's
+  `.spec-harness.json`, which the round edits: a round that set `"base"`
+  to a branch of its own that listed the agent's key had the agent's
+  rulings count, and one that set it to its own branch passed its audit
+  with nothing measured. They are now read from the configuration on the
+  commit `--base` names, on the remote's default branch where git records
+  one, or at the merge base of HEAD with the work tree's base, and a signer
+  counts only where the file lists it both on the base and at that merge
+  base. `rulings`, `guard`, the hook, `context`, `audit` and `doctor` read
+  them so. Upgrading: a change to either key counts once it is on the base;
+  a signer added to the base while a round ran counts for rounds begun
+  after it
+  ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md),
+  amended 2026-11-12).
+
+### Added
+
+- **`harness-config-changed`**, an audit warning, where the work tree's
+  `.spec-harness.json` names another base, a branch that names another
+  commit, or another allowed-signers file than the configuration the round
+  is measured by. A warning under the D4 freeze, so it fails a run only
+  under `--strict`.
+
+- **`audit --require-measured`** fails the run, exit 1, where the round
+  was not measured, or its base was read at the merge base, where the round
+  can make that commit its own: `unmeasured` and `archive/scope-unmeasured`
+  are errors under it, and `harness-config-unanchored` is an error it alone
+  reports. The README's CI job and the audit reference's GitLab job pass it,
+  with `--base` from the forge's own variables, since a fresh CI checkout
+  records no default branch.
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such
@@ -102,6 +134,10 @@ cannot turn a run red. The family's policy is
   non-string `file_path` or no `tool_input`, where it passed with no word;
   and reads a question past a byte order mark, which it read as no JSON and
   let the write through.
+
+- A `.spec-harness.json` that begins with a byte order mark is read, as
+  spec-brief and spec-graph read theirs. Every command refused it, exit 2,
+  with a character the message did not show, and the hook held every write.
 
 ## 0.25.0
 

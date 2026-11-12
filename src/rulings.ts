@@ -212,3 +212,17 @@ export function addRulingRow(
   if (trailing !== undefined) lines.push(trailing);
   return lines.join(eol);
 }
+
+/**
+ * The allowed-signers text that lists the signers two texts both list: the
+ * base tip's lines, each kept where the merge base had it too, read without
+ * the space around it, as a CRLF checkout or an editor leaves it. A signer
+ * added to the base while the round ran is not yet one (ADR-0006).
+ */
+export function signersAtBoth(tip: string, start: string): string {
+  const before = new Set(start.split('\n').map((line) => line.trim()));
+  return tip
+    .split('\n')
+    .filter((line) => before.has(line.trim()))
+    .join('\n');
+}

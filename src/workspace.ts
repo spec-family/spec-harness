@@ -83,6 +83,8 @@ export interface Options {
   readonly strict: boolean;
   /** audit: pass where nothing names a brief, where that is exit 2 without it. */
   readonly ifRound: boolean;
+  /** audit: fail where the round could not be measured, or was measured by what it can change. */
+  readonly requireMeasured: boolean;
   readonly help: boolean;
   readonly version: boolean;
   /** init: apply the plan instead of printing it. */
@@ -117,6 +119,7 @@ export function parseOptions(argv: readonly string[]): Options {
     format: { type: 'string' },
     strict: { type: 'boolean' },
     'if-round': { type: 'boolean' },
+    'require-measured': { type: 'boolean' },
     write: { type: 'boolean' },
     'git-hook': { type: 'boolean' },
     'block-on-failure': { type: 'boolean' },
@@ -183,6 +186,7 @@ export function parseOptions(argv: readonly string[]): Options {
     format,
     strict: values.strict === true,
     ifRound: values['if-round'] === true,
+    requireMeasured: values['require-measured'] === true,
     help: values.help === true,
     version: values.version === true,
     write: values.write === true,

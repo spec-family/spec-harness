@@ -216,8 +216,12 @@ jobs:
       - if: ${{ !cancelled() }} # with spec-guard installed
         run: npx --no-install @spec-family/spec-harness premises --format github
       - if: ${{ !cancelled() }}
-        run: npx --no-install @spec-family/spec-harness audit --if-round --format github
+        env: # the branch the round merges into, as the forge names it, which the round cannot move
+          BASE: origin/${{ github.base_ref || github.event.repository.default_branch }}
+        run: npx --no-install @spec-family/spec-harness audit --if-round --require-measured --base "$BASE" --format github
 ```
+
+`--base` names the branch the pull request merges into, or the default branch on a push, as GitHub has it: a fresh checkout records no default branch, and the round does not choose its base ([audit](docs/reference/audit.md#what-the-round-is-measured-by)). `--require-measured` fails a run that could not measure the round, or measured it by what the round can change. The branch name goes through `env`, never into the line, where a name could run as a command.
 
 Run `doctor` without `--strict`, which fails where the release of Claude Code cannot be told, as on a runner with no `claude`. On a CI runner the Claude Code plugin is neither looked for nor required. [`doctor`](docs/reference/doctor.md) has why the base needs its history, [`audit`](docs/reference/audit.md#in-ci) what `--if-round` prints and a GitLab job that reports its findings as Code Quality, and spec-core's [adopting guide](https://github.com/spec-family/spec-core/blob/main/docs/adopting.md) the whole family in one job.
 
