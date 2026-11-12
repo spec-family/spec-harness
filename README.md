@@ -121,11 +121,13 @@ The hooks ask it of every write:
 | After such a write | `hook claude`, `PostToolUse` | Warns Claude of a write outside the scope. |
 | As a session starts | `hook claude`, `SessionStart` | Says in one line what would hold every write of the session. It holds nothing. |
 | As a turn ends, with `"turnReport": true` | `hook claude`, `Stop` | Reports every changed path the brief protects or that is outside its scope, a shell's writes among them. |
+| Before Codex's `apply_patch`, or a shell command that hands it a patch | `hook codex`, Codex's `PreToolUse`, from `.codex/hooks.json` | Refuses a write to a protected file, with the reason and the next step. |
+| Before Copilot creates or edits a file | `hook copilot`, Copilot's `preToolUse`, from `.github/hooks/spec-harness.json` | The same, as Copilot reads it. |
 | Before a commit | `hook git`, git's `pre-commit`, from `init --git-hook` | Refuses a commit that changes a protected file, for any agent or none. |
 
 A guard is a guardrail - an agent that writes through a shell passes it - so the audit and spec-brief's archive are the gates ([`guard` and the hooks](docs/reference/guard.md)).
 
-**The write guard covers Claude Code only.** Other agents have hooks that can hold a write, each in a language of its own. By their documentation (read 2026-11-12), GitHub Copilot and Cursor read `.claude/settings.json` and run the line `init` wrote there, and neither reads its answer: Copilot would hold every edit, and Cursor let every one through. Neither was run against it. `hook claude` says so in one line where the question carries another agent's fields, and checks nothing for it. For any agent, git's pre-commit hook from `init --git-hook`, the audit and spec-brief's archive hold.
+**The write guard covers Claude Code, and Codex and Copilot by their documentation.** `hook codex` and `hook copilot` answer each agent in its own language, as its hooks reference describes it (read 2026-11-12), and are tested against the shapes it documents; neither agent was run against them. Other agents have hooks that can hold a write, each in a language of its own. By their documentation, GitHub Copilot and Cursor also read `.claude/settings.json` and run the line `init` wrote there, and neither reads its answer: Copilot would hold every edit, whatever `hook copilot` answers, and Cursor let every one through. `hook claude` says so in one line where the question carries another agent's fields, and checks nothing for it. For any agent, git's pre-commit hook from `init --git-hook`, the audit and spec-brief's archive hold.
 
 ### `escalate`, `rule`, `rulings`
 

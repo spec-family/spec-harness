@@ -287,7 +287,7 @@ describe("Claude Code's hook, with more on its line than a release wrote", () =>
   });
 
   it("is the only line read so: git's hook refuses what it does not take, and the commit waits on a line that says why", async () => {
-    expect(await cli(['hook', 'git', 'extra'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: hook takes one argument, "claude" or "git", not "git", "extra"\n' });
+    expect(await cli(['hook', 'git', 'extra'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: hook takes one argument, "claude", "codex", "copilot" or "git", not "git", "extra"\n' });
     expect(await cli(['hook', 'git', '--strict'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: hook does not take --strict; its options are --brief, --base and --root\n' });
   });
 });

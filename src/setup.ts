@@ -51,6 +51,10 @@ import {
   reportsTurns,
   TURN_HOOK,
   mergeMcp,
+  mergeCodexHooks,
+  CODEX_GROUP,
+  COPILOT_HOOKS,
+  COPILOT_HOOKS_FILE,
   mergeSpecBrief,
   mergeSpecGraph,
   missingGitHook,
@@ -68,7 +72,7 @@ import {
   SPEC_BRIEF_CONFIGS,
   SPEC_GRAPH_CONFIGS,
 } from './configure.js';
-import { isFile, mainWorkTree, readJsonObject as readJson, writeAtomic } from './fs.js';
+import { isDirectory, isFile, mainWorkTree, readJsonObject as readJson, writeAtomic } from './fs.js';
 import { hookPath, localBranches, remoteDefault } from './git.js';
 import { claudeCodeWiring, pluginFile } from './round.js';
 import { runSibling } from './siblings.js';
@@ -427,6 +431,43 @@ export async function plan(workspace: Workspace, options: Options, io: CliIO): P
         detail: `${holdsEarlierServer(mcp) ? `${SERVER_MOVED}: ` : ''}the spec-harness MCP server, run with node from the project's install: start_round, check_path, request_escalation, audit_round, list_rounds`,
         apply: () => writeAtomic(mcpFile, stringify(merged)),
       });
+  }
+
+  // Codex's and Copilot's hooks, where the repository keeps the directory
+  // each reads them from: a `.codex` directory is Codex's configuration,
+  // and `.github/hooks` Copilot's (ADR-0012, amended 2026-11-12). Neither is
+  // made: a repository whose agents are other ones keeps neither file.
+  if (isDirectory(join(root, '.codex'))) {
+    const codexFile = join(root, '.codex', 'hooks.json');
+    const codex = await readJson(codexFile);
+    const merged = codex === 'unreadable' ? 'unread' : mergeCodexHooks(codex ?? {});
+    const by = `add ${JSON.stringify(CODEX_GROUP)} under "hooks"."PreToolUse" by hand`;
+    if (merged === 'unread') steps.push({ file: '.codex/hooks.json', action: 'advise', detail: `${codex === 'unreadable' ? 'cannot be read as JSON' : 'its "hooks" is not in the shape Codex reads'}; ${by}` });
+    else if (merged === null) steps.push({ file: '.codex/hooks.json', action: 'keep', detail: 'Codex runs the guard, hook codex' });
+    else {
+      steps.push({
+        file: '.codex/hooks.json',
+        action: codex === null ? 'create' : 'update',
+        detail: 'Codex runs the guard before apply_patch, and before a shell command that runs it, hook codex; Codex runs a project\'s hook once it is trusted, in /hooks',
+        apply: () => writeAtomic(codexFile, stringify(merged)),
+      });
+    }
+  }
+  if (isDirectory(join(root, '.github', 'hooks'))) {
+    const copilotFile = join(root, ...COPILOT_HOOKS_FILE.split('/'));
+    const copilot = await readJson(copilotFile);
+    if (copilot === null) {
+      steps.push({
+        file: COPILOT_HOOKS_FILE,
+        action: 'create',
+        detail: 'Copilot runs the guard before it creates or edits a file, hook copilot; its cloud agent reads the file from the default branch',
+        apply: () => writeAtomic(copilotFile, stringify(COPILOT_HOOKS)),
+      });
+    } else if (JSON.stringify(copilot) === JSON.stringify(COPILOT_HOOKS)) {
+      steps.push({ file: COPILOT_HOOKS_FILE, action: 'keep', detail: 'Copilot runs the guard, hook copilot' });
+    } else {
+      steps.push({ file: COPILOT_HOOKS_FILE, action: 'advise', detail: `holds what init did not write; make it ${JSON.stringify(COPILOT_HOOKS)}, or keep the guard's entry in a file of its own there` });
+    }
   }
 
   // git's hook, where git runs it from: core.hooksPath as git reads it, and

@@ -27,7 +27,7 @@ import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig,
 import { changedPaths, GitError, show, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
-import { afterResponse, callFile, callRecord, claudeResponse, gitResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, otherAgent, parseClaudeHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
+import { afterResponse, callFile, callRecord, claudeResponse, codexResponse, copilotResponse, gitResponse, heldResponse, HOOK_BUDGET_MS, keptCall, mendResponse, NONE, otherAgent, parseClaudeHook, parseCodexHook, parseCopilotHook, SESSION_START, sessionOf, sessionResponse, stagedArchive, TURN_END, turnResponse, warningResponse, warningsKept, warningsOf, type Agent, type CallRecord, type HookRequest, type HookResponse } from './hooks.js';
 import type { Base } from './round.js';
 import type { BriefRow } from './types.js';
 import { declaredVersion, SiblingError } from './siblings.js';
@@ -494,7 +494,60 @@ function cannotCheck(io: CliIO, error: unknown): number {
  * as it was, which no entry of Claude Code's runs.
  */
 function hookCommand(options: Options, io: CliIO): Promise<number> {
-  return options.positionals[0] === 'claude' ? withBudget(HOOK_BUDGET_MS, () => answerHook(options, io)) : answerHook(options, io);
+  const kind = options.positionals[0];
+  if (kind === 'codex' || kind === 'copilot') return withBudget(HOOK_BUDGET_MS, () => answerAgent(kind, options, io));
+  return kind === 'claude' ? withBudget(HOOK_BUDGET_MS, () => answerHook(options, io)) : answerHook(options, io);
+}
+
+/** A sentence of the hook's, as the next step a decision gives: its first letter low, and no full stop. */
+function asHint(sentence: string): string {
+  return `${sentence.charAt(0).toLowerCase()}${sentence.slice(1).replace(/\.$/, '')}`;
+}
+
+/**
+ * `hook codex` and `hook copilot`: the question read into the tool and the
+ * files it writes, decided as `hook claude` decides a write before it, and
+ * answered in the agent's language (ADR-0012, amended 2026-11-12). Each of
+ * the two runs the tool where a hook fails, times out or prints what it
+ * does not read, so what the hook cannot read or check is refused in
+ * words, where `hook claude` says it and passes. Neither has a hook after a
+ * write that the guard answers, so a warning is not said.
+ */
+async function answerAgent(agent: Agent, options: Options, io: CliIO): Promise<number> {
+  let question: string;
+  try {
+    question = await readStdin(io);
+  } catch (error) {
+    return answer(io, heldResponse(agent, `the hook input could not be read: ${(error as Error).message}, so this write is held`));
+  }
+  const asked = agent === 'codex' ? parseCodexHook(question) : parseCopilotHook(question);
+  if ('error' in asked) return answer(io, heldResponse(agent, `${asked.error}, so this write is held`));
+  if (asked.event !== 'PreToolUse' || asked.paths.length === 0) return EXIT_OK;
+  // A share on this machine is read as the drive it names, as for hook claude.
+  const request = { ...asked, paths: asked.paths.map((path) => localSpelling(path, io.platform) ?? path) };
+  const cwd = request.cwd ?? io.cwd;
+  let workspace: Workspace;
+  try {
+    workspace = await openWorkspace({ ...options, root: options.root ?? cwd }, io);
+  } catch (error) {
+    // A directory in no work tree has nothing to guard, as for hook claude.
+    if (error instanceof UsageError) return EXIT_OK;
+    // The one write a configuration that does not load lets through is to
+    // the file itself, as for hook claude (ADR-0005).
+    if (error instanceof ConfigError && error.file !== null && writesOnly(request.paths, error.file, cwd)) return EXIT_OK;
+    return answer(io, heldResponse(agent, `cannot check this write: ${(error as Error).message}`));
+  }
+  try {
+    const decisions: Decision[] = [];
+    for (const part of await writesBy(workspace, request.cwd, request.paths, io)) {
+      const decided = await decisionsFor(part.workspace, options, io, part.paths, cwd);
+      if ('problem' in decided) return answer(io, heldResponse(agent, heldHookLine(decided.problem).wrong, asHint(decided.mend ?? (decided.closed === null ? MEND : CLOSED))));
+      decisions.push(...decided.decisions);
+    }
+    return answer(io, agent === 'codex' ? codexResponse(decisions) : copilotResponse(decisions));
+  } catch (error) {
+    return answer(io, heldResponse(agent, `cannot check this write: ${(error as Error).message}`));
+  }
 }
 
 async function answerHook(options: Options, io: CliIO): Promise<number> {
@@ -609,7 +662,7 @@ async function answerHook(options: Options, io: CliIO): Promise<number> {
     io.stderr.write(response.text);
     return response.exitCode;
   }
-  throw new UsageError('hook takes "claude" or "git"');
+  throw new UsageError('hook takes "claude", "codex", "copilot" or "git"');
 }
 
 /* ------------------------------------------------------------------ doctor */

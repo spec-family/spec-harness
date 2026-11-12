@@ -121,6 +121,23 @@ cannot turn a run red. The family's policy is
   with `--base` from the forge's own variables, since a fresh CI checkout
   records no default branch.
 
+- **`hook codex` and `hook copilot`** guard the writes of OpenAI's Codex CLI
+  and of GitHub Copilot, its cloud agent and its CLI, with the decision
+  `hook claude` makes, answered in each agent's language. Codex's
+  `apply_patch` names its files only in its patch, so they are read from the
+  patch's headers, and from a shell command that hands it one. Copilot is
+  answered with a top-level `permissionDecision`. Each runs the tool where a
+  hook fails or says nothing it reads, so what either hook cannot read or
+  check is refused in words. `init` writes `.codex/hooks.json` where the
+  repository has a `.codex` directory, and `.github/hooks/spec-harness.json`
+  where it has `.github/hooks`. `hook claude` answers as it did, byte for
+  byte. Copilot also runs the line `init` writes into
+  `.claude/settings.json`, which it cannot run, so in a repository with both
+  that line holds every edit. Built from the agents' references and source,
+  read 2026-11-12, and not tried in a live session of either
+  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md),
+  amended 2026-11-12).
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such

@@ -574,6 +574,90 @@ export function mergeMcp(current: Json): Json | null {
   return { ...current, mcpServers: { ...servers, 'spec-harness': { ...(existing as Json | undefined), ...mcpServer(PROJECT_DIR_OR_HERE) } } };
 }
 
+/**
+ * The script, from the top of the project, that an agent's hook entry runs
+ * where the agent gives the entry no variable naming the project, as Claude
+ * Code's `${CLAUDE_PROJECT_DIR}` does.
+ */
+const PROJECT_SCRIPT = 'node_modules/@spec-family/spec-harness/bin/spec-harness.js';
+
+/**
+ * Codex's PreToolUse group, as its hooks reference has an entry
+ * (learn.chatgpt.com/docs/hooks, read 2026-11-12): `command` is one string,
+ * which Codex runs through `$SHELL -lc` from the session's directory, and
+ * `commandWindows` through `cmd.exe /C`. The shell asks git for the
+ * project's top, so a session started below it runs the script all the
+ * same; cmd.exe has no such substitution, so there the session is to start
+ * at the top. The matcher is names alone, read by Codex as an exact match
+ * of one: `apply_patch`, which `Edit` and `Write` select too, and `Bash`,
+ * since Codex applies a patch a shell command hands `apply_patch` in a
+ * heredoc. Sixty seconds, as init gives Claude Code's entry: Codex runs
+ * the tool when the hook runs past its timeout.
+ */
+export const CODEX_GROUP: Readonly<Json> = Object.freeze({
+  matcher: 'apply_patch|Bash|Edit|Write',
+  hooks: [
+    {
+      type: 'command',
+      command: `node "$(git rev-parse --show-toplevel)/${PROJECT_SCRIPT}" hook codex`,
+      commandWindows: `node ${PROJECT_SCRIPT} hook codex`,
+      timeout: 60,
+    },
+  ],
+});
+
+/** Whether an entry of Codex's runs `hook codex`, by the words on its command. */
+function runsCodexHook(entry: unknown): boolean {
+  const command = field(entry, 'command');
+  return typeof command === 'string' && command.includes('spec-harness') && command.includes('hook codex');
+}
+
+/**
+ * A project's `.codex/hooks.json` with the guard's group added under
+ * PreToolUse; `null` where a group there runs `hook codex` already; and
+ * `'unread'` where `hooks` or its `PreToolUse` is in a shape Codex's
+ * reference does not give, which init leaves to the person.
+ */
+export function mergeCodexHooks(current: Json): Json | null | 'unread' {
+  const hooks = current['hooks'] ?? {};
+  if (!isObject(hooks) || Array.isArray(hooks)) return 'unread';
+  const before = hooks['PreToolUse'] ?? [];
+  if (!Array.isArray(before)) return 'unread';
+  const runs = before.some((group) => {
+    const entries = field(group, 'hooks');
+    return Array.isArray(entries) && entries.some(runsCodexHook);
+  });
+  if (runs) return null;
+  return { ...current, hooks: { ...hooks, PreToolUse: [...before, CODEX_GROUP] } };
+}
+
+/**
+ * The file Copilot reads its hooks from, init's own under `.github/hooks`
+ * (Copilot's hooks reference, docs.github.com/en/copilot/reference/hooks-reference,
+ * read 2026-11-12): its cloud agent reads `bash` or `command` and its CLI
+ * `powershell` on Windows, each from `cwd`, the top of the repository;
+ * Copilot runs the tool when the hook runs past `timeoutSec`, 30 where none
+ * is given, so it is given 60, as Claude Code's entry is; and its cloud
+ * agent reads the file from the repository's default branch.
+ */
+export const COPILOT_HOOKS: Readonly<Json> = Object.freeze({
+  version: 1,
+  hooks: {
+    preToolUse: [
+      {
+        type: 'command',
+        bash: `node ${PROJECT_SCRIPT} hook copilot`,
+        powershell: `node ${PROJECT_SCRIPT} hook copilot`,
+        cwd: '.',
+        timeoutSec: 60,
+      },
+    ],
+  },
+});
+
+/** Where init writes Copilot's hooks, beside any others a repository keeps there. */
+export const COPILOT_HOOKS_FILE = '.github/hooks/spec-harness.json';
+
 /** A key of a file read as JSON; a file that is missing, or is not a JSON object, holds nothing. */
 function field(file: unknown, key: string): unknown {
   return isObject(file) ? file[key] : undefined;

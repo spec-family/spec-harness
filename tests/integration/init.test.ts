@@ -4,7 +4,7 @@ import { delimiter, join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { GUARD_HOOK, mcpServer, mergeMcp, PLUGIN, PRE_COMMIT, PROJECT_DIR_OR_HERE } from '../../src/configure.js';
+import { CODEX_GROUP, COPILOT_HOOKS, GUARD_HOOK, mcpServer, mergeMcp, PLUGIN, PRE_COMMIT, PROJECT_DIR_OR_HERE } from '../../src/configure.js';
 import { stateDirectory, StateError } from '../../src/fs.js';
 import { claudeCodeWiring, claudeSettingsFiles, pluginDirectories } from '../../src/round.js';
 import { gitHook, NOT_INSTALLED } from '../../src/setup.js';
@@ -58,6 +58,30 @@ describe('init', () => {
     expect(result.stdout).toContain('advise  .github/allowed_signers');
     expect(result.stdout.endsWith('\nNothing was changed. Run again with --write to apply the plan.\n')).toBe(true);
     expect(snapshot(repo.root)).toEqual(before);
+  });
+
+  it("writes Codex's and Copilot's hooks where the repository keeps their directories, and nothing for either where it does not (ADR-0012)", async () => {
+    const without = installed();
+    const plain = await cli(['init', '--write'], without.root);
+    expect(plain.stdout).not.toContain('.codex/hooks.json');
+    expect(plain.stdout).not.toContain('.github/hooks');
+    expect(existsSync(join(without.root, '.codex'))).toBe(false);
+    const repo = installed();
+    mkdirSync(join(repo.root, '.codex'));
+    mkdirSync(join(repo.root, '.github', 'hooks'), { recursive: true });
+    const written = await cli(['init', '--write'], repo.root);
+    expect(written.stdout).toContain("create  .codex/hooks.json\n        Codex runs the guard before apply_patch, and before a shell command that runs it, hook codex; Codex runs a project's hook once it is trusted, in /hooks\n");
+    expect(written.stdout).toContain('create  .github/hooks/spec-harness.json\n        Copilot runs the guard before it creates or edits a file, hook copilot; its cloud agent reads the file from the default branch\n');
+    expect(JSON.parse(readFileSync(join(repo.root, '.codex', 'hooks.json'), 'utf8'))).toEqual({ hooks: { PreToolUse: [CODEX_GROUP] } });
+    expect(JSON.parse(readFileSync(join(repo.root, '.github', 'hooks', 'spec-harness.json'), 'utf8'))).toEqual(COPILOT_HOOKS);
+    const again = await cli(['init'], repo.root);
+    expect(again.stdout).toContain('keep    .codex/hooks.json\n        Codex runs the guard, hook codex\n');
+    expect(again.stdout).toContain('keep    .github/hooks/spec-harness.json\n        Copilot runs the guard, hook copilot\n');
+    writeFileSync(join(repo.root, '.github', 'hooks', 'spec-harness.json'), '{"version":1,"hooks":{}}\n');
+    writeFileSync(join(repo.root, '.codex', 'hooks.json'), '{ not json');
+    const advised = await cli(['init'], repo.root);
+    expect(advised.stdout).toContain(`advise  .codex/hooks.json\n        cannot be read as JSON; add ${JSON.stringify(CODEX_GROUP)} under "hooks"."PreToolUse" by hand\n`);
+    expect(advised.stdout).toContain('advise  .github/hooks/spec-harness.json\n        holds what init did not write');
   });
 
   it('applies the plan with --write, and a second run changes nothing', async () => {

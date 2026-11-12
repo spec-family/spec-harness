@@ -60,6 +60,10 @@ import {
   reportsTurns,
   TURN_HOOK,
   mergeMcp,
+  mergeCodexHooks,
+  CODEX_GROUP,
+  COPILOT_HOOKS,
+  COPILOT_HOOKS_FILE,
   measuresArchive,
   mergeSpecBrief,
   mergeSpecGraph,
@@ -302,6 +306,48 @@ describe('the MCP server registration', () => {
     expect(PROJECT_DIR_OR_HERE).toBe('${CLAUDE_PROJECT_DIR:-.}');
     expect(mcpServer(PROJECT_DIR)).toEqual({ command: 'node', args: [SCRIPT, 'mcp', '--root', '${CLAUDE_PROJECT_DIR}'] });
     expect(mcpServer('/p')).toEqual({ command: 'node', args: ['/p/node_modules/@spec-family/spec-harness/bin/spec-harness.js', 'mcp', '--root', '/p'] });
+  });
+
+  it("adds the guard's group to Codex's hooks beside what is there, once, and leaves a shape Codex does not read to the person", () => {
+    expect(CODEX_GROUP).toEqual({
+      matcher: 'apply_patch|Bash|Edit|Write',
+      hooks: [
+        {
+          type: 'command',
+          command: 'node "$(git rev-parse --show-toplevel)/node_modules/@spec-family/spec-harness/bin/spec-harness.js" hook codex',
+          commandWindows: 'node node_modules/@spec-family/spec-harness/bin/spec-harness.js hook codex',
+          timeout: 60,
+        },
+      ],
+    });
+    const other = { matcher: 'Bash', hooks: [{ type: 'command', command: 'audit.sh' }] };
+    expect(mergeCodexHooks({})).toEqual({ hooks: { PreToolUse: [CODEX_GROUP] } });
+    expect(mergeCodexHooks({ hooks: { PreToolUse: [other], PostToolUse: [] }, extra: 1 })).toEqual({ hooks: { PreToolUse: [other, CODEX_GROUP], PostToolUse: [] }, extra: 1 });
+    expect(mergeCodexHooks({ hooks: { PreToolUse: [CODEX_GROUP] } })).toBeNull();
+    // A group of the person's that runs it, however they spelled the path.
+    expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'node ./node_modules/.bin/spec-harness hook codex' }] }] } })).toBeNull();
+    expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: 'x' }, { hooks: [{ command: 3 }] }] } })).toEqual({ hooks: { PreToolUse: [{ hooks: 'x' }, { hooks: [{ command: 3 }] }, CODEX_GROUP] } });
+    expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: [{ command: 'spec-harness hook claude' }] }] } })).not.toBeNull();
+    expect(mergeCodexHooks({ hooks: [] })).toBe('unread');
+    expect(mergeCodexHooks({ hooks: { PreToolUse: {} } })).toBe('unread');
+  });
+
+  it("writes Copilot's hooks into a file of the guard's own, run from the top of the repository with a minute", () => {
+    expect(COPILOT_HOOKS_FILE).toBe('.github/hooks/spec-harness.json');
+    expect(COPILOT_HOOKS).toEqual({
+      version: 1,
+      hooks: {
+        preToolUse: [
+          {
+            type: 'command',
+            bash: 'node node_modules/@spec-family/spec-harness/bin/spec-harness.js hook copilot',
+            powershell: 'node node_modules/@spec-family/spec-harness/bin/spec-harness.js hook copilot',
+            cwd: '.',
+            timeoutSec: 60,
+          },
+        ],
+      },
+    });
   });
 
   it('registers the server beside those already there, with the default a project file needs', () => {
