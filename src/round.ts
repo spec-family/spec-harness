@@ -108,7 +108,10 @@ export type Base =
       /** What the work tree's configuration says other than that one. */
       readonly changes: readonly ConfigChange[];
     }
-  | { readonly kind: 'unresolved'; readonly reason: string };
+  // A base that is not resolved has no anchor and no changes, said in the
+  // type so that they are read without a test of the kind first: such a
+  // test reads the same either way, and its mutants with it.
+  | { readonly kind: 'unresolved'; readonly reason: string; readonly anchor?: never; readonly changes?: never };
 
 /** A commit a ref names, as typed; or a branch a configuration names, as the remote's where it names no commit here. */
 async function commitOf(ref: string, configured: boolean, root: string): Promise<{ readonly ref: string; readonly sha: string } | { readonly reason: string }> {
@@ -210,11 +213,11 @@ export async function resolveBase(workspace: Workspace, flag: string | undefined
   common ??= await mergeBase(found.sha, head, root);
   if (common === null) return unresolved(`"${found.ref}" and HEAD share no history`);
   const changes: ConfigChange[] = [];
-  // Under --base the work tree's base is not read, so it changes nothing.
-  // Elsewhere it is a change where it names another commit than the base,
-  // or none: "main" beside a remote whose default branch is origin/main
-  // names what the base is, in other words.
-  if (flag === undefined && own !== found.sha) {
+  // The work tree's base is a change where it names another commit than the
+  // base, or none: "main" beside a remote whose default branch is
+  // origin/main names what the base is, in other words. Under --base it is
+  // not read, and `own` is the commit --base names, so it changes nothing.
+  if (own !== found.sha) {
     changes.push({ key: 'base', workTree: workspace.config.base ?? "the remote's default branch", measured: found.ref, at });
   }
   const signers = measured.rulings.allowedSigners;
@@ -954,8 +957,8 @@ export async function runAudit(workspace: Workspace, brief: BriefRow, reader: Do
   const report = audit({
     brief,
     unmeasured,
-    configChanges: base.kind === 'resolved' ? base.changes : [],
-    requireMeasured: requireMeasured ? { unanchored: base.kind === 'resolved' && base.anchor === 'merge-base' ? UNANCHORED : null } : undefined,
+    configChanges: base.changes,
+    requireMeasured: requireMeasured ? { unanchored: base.anchor === 'merge-base' ? UNANCHORED : null } : undefined,
     dependencies,
     archive,
     assertions: 'unavailable' in assertions ? assertions : assertions.outcomes,

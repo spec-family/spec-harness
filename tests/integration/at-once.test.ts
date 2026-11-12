@@ -250,6 +250,21 @@ describe('doctor', () => {
   });
 });
 
+describe('audit', () => {
+  it("asks git for no remote's default branch where --base names the base, and for it where nothing does", async () => {
+    const repo = onBrief();
+    const named = await cli(['audit', '--base', 'main', '--format', 'json'], repo.root, { env: {} });
+    expect(parsed<{ brief: string }>(named).brief).toBe('001');
+    await settled();
+    expect(seen.log.filter((entry) => entry.line.includes(REMOTE))).toEqual([]);
+    seen.log.length = 0;
+    await cli(['audit', '--format', 'json'], repo.root, { env: {} });
+    await settled();
+    // Without --base the remote's default branch is asked for, once.
+    when('answered', REMOTE);
+  });
+});
+
 describe('init', () => {
   it("asks git at once for the remote's default branch, the local branches and where its hooks are", async () => {
     const repo = repository({ 'README.md': '# x\n' }, null);

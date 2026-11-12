@@ -82,6 +82,17 @@ describe('the anchor the base is read from', () => {
     expect(base.kind === 'resolved' && base.changes).toEqual([{ key: 'base', workTree: 'evil', measured: 'main', at: `the merge base with evil, ${evil.slice(0, 12)}` }]);
   });
 
+  it('reads the base the merge base configures as the remote\'s branch of that name, where it names no commit here, as a CI checkout fetches it', async () => {
+    const repo = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }), 'src/a.ts': 'a\n' }, { base: 'trunk' });
+    const start = repo.git('rev-parse', 'HEAD');
+    repo.git('update-ref', 'refs/remotes/origin/trunk', 'main');
+    repo.git('checkout', '-q', '-b', 'brief/001-x');
+    configure(repo, { base: 'main' });
+    repo.write('src/a.ts', 'b\n');
+    repo.commit('the round');
+    expect(await baseOf(repo)).toMatchObject({ kind: 'resolved', ref: 'remotes/origin/trunk', sha: start, source: 'config', anchor: 'merge-base' });
+  });
+
   it('keeps the work tree\'s base where the merge base configures none, as before the harness was set up there', async () => {
     const repo = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }), 'src/a.ts': 'a\n' }, null);
     repo.git('checkout', '-q', '-b', 'brief/001-x');
@@ -119,6 +130,24 @@ describe('a base that cannot be read', () => {
     const repo = withRemote();
     repo.git('checkout', '-q', '--orphan', 'nothing-yet');
     expect(await baseOf(repo)).toEqual({ kind: 'unresolved', reason: 'HEAD names no commit: nothing is committed on this branch yet' });
+  });
+
+  it('says the base that names no commit before a HEAD that names none, under --base and the remote\'s anchor', async () => {
+    const repo = withRemote();
+    repo.git('checkout', '-q', '--orphan', 'nothing-yet');
+    expect(await baseOf(repo, 'nowhere')).toEqual({ kind: 'unresolved', reason: '"nowhere" names no commit' });
+    repo.git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/gone');
+    expect(await baseOf(repo)).toEqual({ kind: 'unresolved', reason: '"origin/gone" names no commit' });
+  });
+
+  it('says the base a configuration it is measured by names, where it names no commit here or on the remote', async () => {
+    const remote = withRemote({}, { base: 'nowhere' });
+    expect(await baseOf(remote)).toEqual({ kind: 'unresolved', reason: '"nowhere" names no commit, and neither does remotes/origin/nowhere' });
+    const local = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }) }, { base: 'nowhere' });
+    local.git('checkout', '-q', '-b', 'brief/001-x');
+    configure(local, { base: 'main' });
+    local.commit('the round');
+    expect(await baseOf(local)).toEqual({ kind: 'unresolved', reason: '"nowhere" names no commit, and neither does remotes/origin/nowhere' });
   });
 });
 
