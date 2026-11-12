@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { OutOfScope, ProtectHarness } from '../../src/config.js';
-import { decide, decideWritten, DOTS_MEND, HARNESS_FILES, harnessFile, heldBy, heldForDots, heldForShare, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
+import { decide, decideWritten, unreadScope, DOTS_MEND, HARNESS_FILES, harnessFile, heldBy, heldForDots, heldForShare, rooted, type GuardInput, type VerifiedRuling } from '../../src/guard.js';
 import type { BriefRow } from '../../src/types.js';
 import { row } from './helpers.js';
 
@@ -29,6 +29,35 @@ function check(
 
 const ESCALATE =
   'if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool';
+
+describe('a brief spec-brief cannot read whole (ADR-0005)', () => {
+  const unread = (problems: { rule: string; field: string | null; line: number; message: string }[]) => row({ affectedFiles: ['src/**'], protectedFiles: [], problems });
+
+  it('refuses every write but one to the brief itself, where what it protects or its scope cannot be told', () => {
+    const torn = unread([
+      { rule: 'field', field: 'protectedFiles', line: 6, message: '"protectedFiles" is an inline list with no closing ]' },
+      { rule: 'glob', field: 'affectedFiles', line: 5, message: '"/src" is rooted' },
+    ]);
+    expect(check('src/a.ts', { brief: torn })).toEqual({
+      path: 'src/a.ts',
+      verdict: 'deny',
+      reason: 'unreadable-protection',
+      because: ['line 6: "protectedFiles" is an inline list with no closing ]', 'line 5: "/src" is rooted'],
+      message: 'spec-brief cannot read brief 012 whole, so what it protects cannot be told: "protectedFiles" is an inline list with no closing ] (line 6), and 1 more',
+      hint: 'fix briefs/012_rotate-tokens.md, which a write may still reach (spec-brief lint names the problem)',
+    });
+    expect(check('briefs/012_rotate-tokens.md', { brief: torn })).toMatchObject({ verdict: 'allow', reason: 'brief-file' });
+    const whole = unread([{ rule: 'encoding', field: null, line: 1, message: 'the brief is UTF-16' }]);
+    expect(check('src/a.ts', { brief: whole }).message).toBe('spec-brief cannot read brief 012 whole, so what it protects cannot be told: the brief is UTF-16 (line 1)');
+  });
+
+  it('reads nothing of what it could not read of a field the guard does not decide by', () => {
+    const waved = unread([{ rule: 'field', field: 'wave', line: 4, message: '"wave" must be a whole number' }]);
+    expect(check('src/a.ts', { brief: waved })).toMatchObject({ verdict: 'allow', reason: 'in-scope' });
+    expect(unreadScope(waved)).toEqual([]);
+    expect(unreadScope(row())).toEqual([]);
+  });
+});
 
 describe('the guard', () => {
   it('allows a path in scope, naming the patterns that put it there', () => {

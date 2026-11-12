@@ -11,7 +11,7 @@
 
 import { globAlternatives, parseGlob, type Glob, type GlobAlternative } from './vendor/spec-core/pattern/index.js';
 import type { OutOfScope, ProtectHarness } from './config.js';
-import type { BriefRow } from './types.js';
+import type { BriefProblem, BriefRow } from './types.js';
 
 export type Verdict = 'allow' | 'warn' | 'ask' | 'deny';
 
@@ -137,6 +137,26 @@ export function harnessFile(path: string, signers: string = SIGNERS): string | n
   return matching([...HARNESS_FILES, signers], path).matched[0] ?? null;
 }
 
+/**
+ * The fields the guard decides a write by. One spec-brief could not read,
+ * or a brief it could not read whole, is a scope the guard cannot tell:
+ * spec-brief lists such a field as empty, and a brief that protected files
+ * read as one that protects none (round 29's evaluation; ADR-0005).
+ */
+const GUARDED_FIELDS: readonly string[] = ['protectedFiles', 'affectedFiles'];
+
+/** What spec-brief could not read of a brief that the guard decides a write by: none where it read all of it, or does not say. */
+export function unreadScope(brief: Pick<BriefRow, 'problems'>): BriefProblem[] {
+  return (brief.problems ?? []).filter((problem) => problem.field === null || GUARDED_FIELDS.includes(problem.field));
+}
+
+/** Why a brief's scope cannot be told, in one clause: the first thing spec-brief could not read of it, with its line, and how many more. */
+export function describeUnread(brief: Pick<BriefRow, 'id'>, unread: readonly BriefProblem[]): string {
+  const first = unread[0]!;
+  const more = unread.length > 1 ? `, and ${unread.length - 1} more` : '';
+  return `spec-brief cannot read brief ${brief.id} whole, so what it protects cannot be told: ${first.message} (line ${first.line})${more}`;
+}
+
 const ESCALATE =
   'if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool';
 
@@ -171,6 +191,20 @@ export function decide(input: GuardInput): Decision {
       because: [],
       message: `${path} is brief ${brief.id} itself`,
       hint: 'tick or disposition its boxes as the work lands',
+    };
+  }
+
+  const unread = unreadScope(brief);
+  if (unread.length > 0) {
+    // As a protection that cannot be read: refused until the brief is
+    // fixed, and the brief itself, above, is the write that fixes it.
+    return {
+      path,
+      verdict: 'deny',
+      reason: 'unreadable-protection',
+      because: unread.map((problem) => `line ${problem.line}: ${problem.message}`),
+      message: describeUnread(brief, unread),
+      hint: `fix ${brief.file}, which a write may still reach (spec-brief lint names the problem)`,
     };
   }
 

@@ -62,6 +62,30 @@ cannot turn a run red. The family's policy is
   another name
   ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
 
+- **The write guard says it covers Claude Code only.** GitHub Copilot and
+  Cursor read `.claude/settings.json` and run the hook line `init` wrote
+  there, and neither reads the answer: Copilot holds every edit, and
+  Cursor lets every one through, with no word. `hook claude` now says in
+  one line to the person, exit 0, that the write is not checked, where the
+  question carries Cursor's `cursor_version`, Copilot's `toolName` or
+  `toolArgs`, an event of Cursor's or Gemini CLI's, or a tool the guard does
+  not know that names a file or carries a patch, as Codex's `apply_patch`
+  does. The README and the guard reference say so
+  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md)).
+
+- **A brief spec-brief cannot read whole no longer leaves the guard off.**
+  spec-brief listed a field it could not parse as empty, so a brief whose
+  `protectedFiles` had lost its `]`, or was UTF-16, read as one that
+  protects nothing, and the hook let every write through with no word.
+  Where `spec-brief list --format json` says, in its `problems`, that it
+  could not read the brief's text or front matter whole, or its
+  `protectedFiles` or `affectedFiles`, the guard refuses every write but
+  one to the brief itself, reason `unreadable-protection`, in spec-brief's
+  words, and a session that starts says so. A spec-brief that does not say
+  decides as before; the release of spec-brief that adds `problems` is the
+  one to install with this
+  ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such

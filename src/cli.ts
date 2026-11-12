@@ -350,8 +350,15 @@ async function sessionProblem(options: Options, io: CliIO, root: string, cwd: st
     const found = cwd === null ? null : await otherTree(named, cwd);
     const workspace = found === null ? named : await openFound(found, io, () => [named.root]);
     const active = await activeBrief(keptFor(workspace, session), options, io.env);
-    const { problem } = describeActive(active);
-    if (problem === null) return null;
+    const { brief, problem } = describeActive(active);
+    if (problem === null) {
+      // A brief spec-brief cannot read whole holds every write but one to
+      // itself, as a protection that cannot be read does (guard.ts).
+      if (brief === null) return null;
+      const { describeUnread, unreadScope } = await import('./guard.js');
+      const unread = unreadScope(brief);
+      return unread.length === 0 ? null : `${describeUnread(brief, unread)}, ${held}, but one to ${brief.file} itself and ${outside}: spec-brief lint names the problem`;
+    }
     if (closesRound(active)) return `${heldHookLine(problem).wrong}, so every write of this session is held, but ${outside}: the round is archived and ends when this branch merges, so write on the branch of a live brief; spec-harness doctor says more`;
     return `${heldHookLine(problem).wrong}, ${held}, but ${outside}: fix the brief or the branch before writing; spec-harness doctor says more`;
   } catch (error) {
