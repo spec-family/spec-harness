@@ -40,6 +40,12 @@ jobs:
         # ADR-0008 has the steps that move one.
         os: [ubuntu-24.04, ubuntu-26.04, windows-2025-vs2026, macos-26]
         node: ['22', '24', '26']
+        # A pull request runs four of the twelve legs: the floor and the current
+        # release on the gates' image, and the floor on Windows and macOS. A push
+        # to main, a manual run and a release (which calls this workflow) run
+        # them all, so every leg still passes before a version is staged.
+        # spec-core's ADR-0008, amended 2026-11-12, says why.
+        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"ubuntu-26.04"},{"node":"24"},{"os":"windows-2025-vs2026","node":"26"},{"os":"macos-26","node":"26"}]' || '[]') }}
     steps:
       # Pinned to commits, with the tag beside each, as in the sibling tools.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -146,3 +152,26 @@ jobs:
           name: mutation-core
           path: reports/mutation-core/
           if-no-files-found: ignore
+
+  # One check that every job above passed, for the main ruleset to require:
+  # a required check for each leg would name legs a pull request does not
+  # run. A job that failed or was cancelled fails it; one skipped because
+  # another failed shows that other's failure here too (spec-core's ADR-0008, amended 2026-11-12).
+  all-green:
+    name: all green
+    if: ${{ always() }}
+    needs: [test, minimum, coverage, mutation]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *) echo "a job ended $result"; exit 1 ;;
+            esac
+          done
