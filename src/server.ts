@@ -17,7 +17,7 @@ import { findActive, type ActiveBrief } from './briefs.js';
 import { briefIdFromBranch } from './branch.js';
 import { titleOf } from './context.js';
 import { createReader } from './reader.js';
-import { dotsOutside, outsideEvery, realSpelling } from './fs.js';
+import { dotsOutside, localSpelling, outsideEvery, realSpelling } from './fs.js';
 import { heldBy, heldForDots, type Decision } from './guard.js';
 import { buildContext, checkPaths, raiseEscalation, runAudit } from './round.js';
 import type { EscalationOption } from './rulings.js';
@@ -397,7 +397,13 @@ function served(open: () => Promise<Workspace>, cwd: string, env: CliIO['env'], 
         // Each path by the work tree of this repository that holds it, as the
         // hook decides a write: the one read, another, or the server's own.
         const decisions: Decision[] = [];
-        for (const part of await writesBy(workspace, where.workspace.root, given.paths, io)) {
+        // A drive's share on this machine is decided as the drive, before
+        // anything reads where the path is (fs.ts, localSpelling); one
+        // through another share is held where it is decided. On Linux, where
+        // the sweep runs, every path is as given, and the mutants of the
+        // line are equivalent; the suite's Windows leg holds it.
+        const paths = given.paths.map((path) => localSpelling(path) ?? path);
+        for (const part of await writesBy(workspace, where.workspace.root, paths, io)) {
           decisions.push(...(await asTheHook(part.workspace, env, id, part.paths, where.workspace.root, base.base)));
         }
         const text = decisions.map((d) => `${d.verdict}: ${d.message}${d.verdict === 'allow' ? '' : `. Next: ${d.hint}`}`).join('\n');

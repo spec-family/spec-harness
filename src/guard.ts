@@ -294,6 +294,23 @@ export function heldBy(path: string, problem: string): Decision {
   return { path, verdict: 'deny', reason: 'held', because: [], message: problem, hint: 'fix the brief or the branch before writing' };
 }
 
+/**
+ * A path through a share on this machine that names no drive, held: the
+ * share's own configuration names its directory, which can be the
+ * repository by another name, and nothing the guard reads says which
+ * (fs.ts, throughShare). A drive's share is read as the drive.
+ */
+export function heldForShare(path: string): Decision {
+  return {
+    path,
+    verdict: 'deny',
+    reason: 'held',
+    because: [],
+    message: `${path} names a share on this machine, which can be the repository by another name, and the guard cannot tell which directory it is`,
+    hint: "write the path as a local one, the drive and the directories, or through the drive's own share, such as C$",
+  };
+}
+
 /** What the hook says next of a path with a `..` that it holds as one that may be in a work tree. */
 export const DOTS_MEND = 'write the path without its .., as it resolves';
 

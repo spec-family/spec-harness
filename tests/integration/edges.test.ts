@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { ConfigError, DEFAULT_CONFIG } from '../../src/config.js';
-import { CALL_LIFE_MS, gitDirectories, holdsGit, isFile, isTop, keepCall, loadConfig, mainWorkTree, readJsonObject, readText, realSpelling, repositoryPath, stateDirectory, takeCall, writeAtomic } from '../../src/fs.js';
+import { CALL_LIFE_MS, gitDirectories, holdsGit, isFile, isTop, keepCall, loadConfig, localSpelling, mainWorkTree, readJsonObject, readText, realSpelling, repositoryPath, stateDirectory, takeCall, throughShare, writeAtomic } from '../../src/fs.js';
 import {
   addWorktree,
   ANSWER_MS,
@@ -39,6 +40,41 @@ import { MAIN_INSTALL } from '../../src/workspace.js';
 import { brief, BRIEF_FILE, cleanup, cli, git, ignoresCase, install, installFake, parsed, repository, ROOT, temp } from './helpers.js';
 
 afterAll(cleanup);
+
+describe('a path through a share on this machine (ADR-0005)', () => {
+  it('names a drive\'s share on this machine by the drive, another share on it as a share, and any other path as none', () => {
+    const host = 'Desk-1';
+    for (const [path, local] of [
+      ['\\\\localhost\\C$\\Repos\\x\\a.js', 'C:\\Repos\\x\\a.js'],
+      ['\\\\LOCALHOST\\d$\\x', 'd:\\x'],
+      ['\\\\127.0.0.1\\C$\\x', 'C:\\x'],
+      ['\\\\127.1\\C$\\x', 'C:\\x'],
+      ['\\\\--1.ipv6-literal.net\\C$\\x', 'C:\\x'],
+      ['\\\\desk-1\\C$\\x', 'C:\\x'],
+      ['\\\\?\\UNC\\localhost\\C$\\x', 'C:\\x'],
+      ['\\\\.\\UNC\\127.0.0.1\\C$\\x', 'C:\\x'],
+      ['//localhost/C$/Repos/x', 'C:/Repos/x'],
+      ['\\\\localhost\\C$', 'C:\\'],
+      ['\\\\localhost\\\\C$\\x', 'C:\\x'],
+    ] as const) {
+      expect(throughShare(path, host), path).toEqual({ local });
+    }
+    for (const path of ['\\\\localhost\\work\\x', '\\\\127.0.0.1\\C\\x', '\\\\localhost\\CD$\\x', '\\\\?\\UNC\\desk-1\\repo']) expect(throughShare(path, host), path).toBe('share');
+    for (const path of ['\\\\elsewhere\\C$\\x', '\\\\128.0.0.1\\C$\\x', '\\\\?\\C:\\x', '\\\\.\\C:\\x', 'C:\\x', '/home/x', 'a\\b', '\\\\localhost', '\\\\desk-10\\C$\\x']) {
+      expect(throughShare(path, host), path).toBeNull();
+    }
+  });
+
+  it('reads a path through a share only on Windows, and holds one through a share that names no drive', () => {
+    expect(localSpelling('\\\\localhost\\C$\\x', 'win32', 'h')).toBe('C:\\x');
+    expect(localSpelling('\\\\localhost\\work\\x', 'win32', 'h')).toBeNull();
+    expect(localSpelling('C:\\x', 'win32', 'h')).toBe('C:\\x');
+    expect(localSpelling('\\\\localhost\\C$\\x', 'linux', 'h')).toBe('\\\\localhost\\C$\\x');
+    expect(localSpelling('\\\\localhost\\work\\x', 'darwin', 'h')).toBe('\\\\localhost\\work\\x');
+    // This machine's own name, where none is given.
+    expect(localSpelling(`\\\\${hostname()}\\C$\\x`, 'win32')).toBe('C:\\x');
+  });
+});
 
 describe('paths as the filesystem spells them', () => {
   it('resolves a path that does not exist yet through the nearest ancestor that does', () => {

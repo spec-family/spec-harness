@@ -157,7 +157,9 @@ export function otherAgent(raw: string): string | null {
 export function parseClaudeHook(raw: string): HookRequest | { readonly error: string } {
   let value: unknown;
   try {
-    value = JSON.parse(raw);
+    // A byte order mark before the JSON is read past: refused, the question
+    // was one the hook could not read, and the write went ahead unchecked.
+    value = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
   } catch {
     return { error: 'the hook input is not JSON' };
   }
@@ -174,6 +176,10 @@ export function parseClaudeHook(raw: string): HookRequest | { readonly error: st
       const path = input[field];
       if (typeof path === 'string' && path !== '' && !paths.includes(path)) paths.push(path);
     }
+    // A tool that writes a file and names none is a question the hook
+    // cannot answer: read as one that writes nothing, it passed with no
+    // word, where guard.md promises a line for what it cannot read.
+    if (paths.length === 0) return { error: `the hook input names ${named} and no file it writes, as a string in file_path, path or notebook_path` };
   }
   const text = (field: string): string | null => {
     const found = value[field];

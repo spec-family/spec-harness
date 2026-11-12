@@ -42,11 +42,23 @@ describe('reading a Claude Code hook', () => {
     expect(request).toMatchObject({ paths: ['a.ts', 'b.ts'] });
   });
 
-  it('ignores empty and non-string paths', () => {
-    expect(parseClaudeHook(hook({ tool_input: { file_path: '', path: 7, notebook_path: null } }))).toMatchObject({ paths: [] });
-    expect(parseClaudeHook(hook({ tool_input: 'a.ts' }))).toMatchObject({ paths: [] });
-    expect(parseClaudeHook(hook({ tool_input: ['a.ts'] }))).toMatchObject({ paths: [] });
-    expect(parseClaudeHook(hook({}))).toMatchObject({ paths: [] });
+  it('says it cannot read a writing tool that names no file, as one empty, not a string, or with no input', () => {
+    const named = (tool: string) => ({ error: `the hook input names ${tool} and no file it writes, as a string in file_path, path or notebook_path` });
+    expect(parseClaudeHook(hook({ tool_input: { file_path: '', path: 7, notebook_path: null } }))).toEqual(named('Write'));
+    expect(parseClaudeHook(hook({ tool_input: 'a.ts' }))).toEqual(named('Write'));
+    expect(parseClaudeHook(hook({ tool_input: ['a.ts'] }))).toEqual(named('Write'));
+    expect(parseClaudeHook(hook({}))).toEqual(named('Write'));
+    expect(parseClaudeHook(hook({ tool_name: 'NotebookEdit', tool_input: { file_path: 3 } }))).toEqual(named('NotebookEdit'));
+    // One field read is enough, where the others are empty.
+    expect(parseClaudeHook(hook({ tool_input: { file_path: '', path: 'a.ts' } }))).toMatchObject({ paths: ['a.ts'] });
+    // A tool that writes no file names none, and is read as before.
+    expect(parseClaudeHook(hook({ tool_name: 'Bash', tool_input: { command: 'ls' } }))).toMatchObject({ tool: 'Bash', paths: [] });
+  });
+
+  it('reads past a byte order mark before the JSON', () => {
+    const mark = String.fromCharCode(0xfeff);
+    expect(parseClaudeHook(`${mark}${hook({ tool_input: { file_path: 'a.ts' } })}`)).toMatchObject({ event: 'PreToolUse', paths: ['a.ts'] });
+    expect(parseClaudeHook(`${mark}${mark}{}`)).toEqual({ error: 'the hook input is not JSON' });
   });
 
   it('reads no path from a tool that does not write files', () => {
@@ -67,9 +79,9 @@ describe('reading a Claude Code hook', () => {
 
   it('reads the working directory only when it is a string', () => {
     expect(parseClaudeHook(hook({ cwd: 3, tool_input: { file_path: 'a' } }))).toMatchObject({ cwd: null });
-    expect(parseClaudeHook(JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Edit' }))).toEqual({
+    expect(parseClaudeHook(JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Read' }))).toEqual({
       event: 'PostToolUse',
-      tool: 'Edit',
+      tool: 'Read',
       cwd: null,
       paths: [],
       session: null,

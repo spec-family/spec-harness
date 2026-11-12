@@ -110,6 +110,35 @@ describe('hook claude', () => {
     expect(await claude('{"tool_name":"Write"}')).toEqual({ code: 0, stdout: `${JSON.stringify({ systemMessage: 'spec-harness: the hook input names no event or tool, so nothing it asks about is checked' })}\n`, stderr: '' });
   });
 
+  it('says a write that names no file, where it passed with no word, and reads a question past a byte order mark', async () => {
+    const said = (tool: string) => `${JSON.stringify({ systemMessage: `spec-harness: the hook input names ${tool} and no file it writes, as a string in file_path, path or notebook_path, so nothing it asks about is checked` })}\n`;
+    for (const input of [{}, { file_path: '' }, { file_path: 7 }]) {
+      expect(await claude(hookInput('PreToolUse', 'Write', input)), JSON.stringify(input)).toEqual({ code: 0, stdout: said('Write'), stderr: '' });
+    }
+    expect(await claude(JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Edit', cwd: repo.root }))).toEqual({ code: 0, stdout: said('Edit'), stderr: '' });
+    const marked = await claude(`${String.fromCharCode(0xfeff)}${hookInput('PreToolUse', 'Write', { file_path: join(repo.root, 'src', 'db', 'schema.ts') })}`);
+    expect(JSON.parse(marked.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+
+  it.skipIf(process.platform !== 'win32')('reads a path through a drive\'s share on this machine as the drive, and holds one through another share of it', async () => {
+    const local = join(repo.root, 'src', 'db', 'schema.ts');
+    const drive = local.slice(0, 1);
+    const tail = local.slice(2);
+    for (const path of [`\\\\localhost\\${drive}$${tail}`, `\\\\127.0.0.1\\${drive.toLowerCase()}$${tail}`, `\\\\?\\UNC\\localhost\\${drive}$${tail}`, `//LOCALHOST/${drive}$${tail.replaceAll('\\', '/')}`]) {
+      const answer = JSON.parse((await claude(hookInput('PreToolUse', 'Write', { file_path: path }))).stdout) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
+      expect(answer.hookSpecificOutput.permissionDecision, path).toBe('deny');
+      expect(answer.hookSpecificOutput.permissionDecisionReason, path).toContain('brief 001 does not empower this round to change src/db/schema.ts');
+    }
+    const shared = `\\\\localhost\\work${tail}`;
+    const held = JSON.parse((await claude(hookInput('PreToolUse', 'Write', { file_path: shared }))).stdout) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
+    expect(held.hookSpecificOutput).toMatchObject({ permissionDecision: 'deny' });
+    expect(held.hookSpecificOutput.permissionDecisionReason).toBe(
+      `spec-harness: ${shared} names a share on this machine, which can be the repository by another name, and the guard cannot tell which directory it is. Next: write the path as a local one, the drive and the directories, or through the drive's own share, such as C$.`,
+    );
+    const guard = await cli(['guard', `\\\\localhost\\${drive}$${tail}`, '--format', 'json'], repo.root);
+    expect(JSON.parse(guard.stdout).decisions[0]).toMatchObject({ verdict: 'deny', reason: 'protected' });
+  });
+
   it('finds the project from CLAUDE_PROJECT_DIR, or --root, when run from elsewhere', async () => {
     const elsewhere = temp();
     const input = hookInput('PreToolUse', 'Write', { file_path: join(repo.root, 'src', 'db', 'schema.ts') }, elsewhere);

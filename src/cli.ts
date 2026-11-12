@@ -23,7 +23,7 @@ import { CONFIG_FILE, ConfigError, SIBLINGS, SPEC_BRIEF_CONFIGS } from './config
 import type { ClaudeCodeWiring } from './configure.js';
 import { dirname, join, resolve } from 'node:path';
 
-import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
+import { dotsOutside, gitDirectories, isDirectory, isFile, keepCall, loadConfig, localSpelling, mainWorkTree, outsideEvery, reachedBy, StateError, takeCall, writesOnly } from './fs.js';
 import { changedPaths, GitError, show, stagedChanges, withBudget } from './git.js';
 import type { DocumentReader } from './document.js';
 import type { Decision } from './guard.js';
@@ -174,10 +174,16 @@ async function decisionsFor(
   workspace: Workspace,
   options: Options,
   io: CliIO,
-  given: readonly string[],
+  asked: readonly string[],
   cwd: string,
   session: string | null = null,
 ): Promise<{ readonly decisions: Decision[]; readonly brief: BriefRow | null } | { readonly problem: string; readonly closed: BriefRow | null; readonly mend?: string }> {
+  // A drive's share on this machine is decided as the drive, before
+  // anything reads where the path is (fs.ts, localSpelling); one through
+  // another share is held where it is decided. On Linux, where the sweep
+  // runs, every path is as given, and the mutants of the line are
+  // equivalent; the suite's Windows leg holds it.
+  const given = asked.map((path) => localSpelling(path) ?? path);
   // A path outside every work tree of the repository is decided as one
   // outside it, whichever brief is named and whatever is wrong with the
   // name: the problem held every write, a file outside the repository
@@ -484,8 +490,19 @@ function hookCommand(options: Options, io: CliIO): Promise<number> {
 async function answerHook(options: Options, io: CliIO): Promise<number> {
   const kind = options.positionals[0];
   if (kind === 'claude') {
-    const request = await writeAsked(io);
-    if (typeof request === 'number') return request;
+    const asked = await writeAsked(io);
+    if (typeof asked === 'number') return asked;
+    // A share on this machine is read as the drive it names, before
+    // anything decides where the path is; a write through one that names no
+    // drive is held, since it can be the repository by another name. On
+    // Linux, where the sweep runs, every path is as given, and the mutants
+    // of these lines are equivalent; the suite's Windows leg holds them.
+    const local = asked.paths.map((path) => localSpelling(path));
+    if (asked.event === 'PreToolUse' && local.includes(null)) {
+      const { heldForShare } = await import('./guard.js');
+      return answer(io, claudeResponse(asked.event, asked.paths.filter((_, at) => local[at] === null).map(heldForShare)));
+    }
+    const request = { ...asked, paths: local.map((path, at) => path ?? asked.paths[at]!) };
     // The root the line gives, or what is wrong with it: read as `doctor`
     // reads the line where it finds it in a settings file (usage.ts).
     const line = readHookLine(options.root, io.cwd, isDirectory);

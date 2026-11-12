@@ -164,6 +164,12 @@ describe('the tools', () => {
     expect(decisions.map((d) => d.verdict)).toEqual(['deny', 'allow', 'warn']);
   });
 
+  it.skipIf(process.platform !== 'win32')("check_path reads a drive's share on this machine as the drive, as the hook does", async () => {
+    const local = join(repo.root, 'src', 'db', 'schema.ts');
+    const outcome = await tool('check_path').call({ paths: [`//localhost/${local.slice(0, 1)}$${local.slice(2)}`] });
+    expect(outcome.text).toMatch(/^deny: brief 001 does not empower this round to change src\/db\/schema\.ts /);
+  });
+
   it('check_path refuses arguments it does not take', async () => {
     expect(await tool('check_path').call({ paths: [] })).toEqual({ text: '"paths" must be a non-empty array of strings.', isError: true });
     expect(await tool('check_path').call({ paths: 'a.ts' })).toEqual({ text: '"paths" must be a non-empty array of strings.', isError: true });
