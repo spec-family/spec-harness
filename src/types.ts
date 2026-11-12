@@ -36,9 +36,9 @@ export interface BriefRow {
   readonly ready: boolean;
   readonly waitingOn: readonly string[];
   /**
-   * What spec-brief could not read of the brief, as its list says, where it
-   * says anything: absent where every field was read, and from a spec-brief
-   * that does not say.
+   * What spec-brief could not read of the brief, as its list says: empty
+   * where it read the whole, and absent from a spec-brief that does not say,
+   * before 0.15.0 (versions.ts, PROBLEMS_SINCE).
    */
   readonly problems?: readonly BriefProblem[] | undefined;
 }

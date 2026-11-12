@@ -71,7 +71,7 @@ const FAKE = [
   '};',
   'const briefs = names.map((name) => {',
   "  const text = readFileSync(join(root, 'briefs', name), 'utf8');",
-  "  return { id: name.split('_')[0], file: 'briefs/' + name, title: null, phase: 'live', status: field(text, 'status'), type: null, wave: null, dependsOn: [], affectedFiles: list(text, 'affectedFiles'), protectedFiles: list(text, 'protectedFiles'), tasks: { total: 0, checked: 0 }, ready: true, waitingOn: [] };",
+  "  return { id: name.split('_')[0], file: 'briefs/' + name, title: null, phase: 'live', status: field(text, 'status'), type: null, wave: null, dependsOn: [], affectedFiles: list(text, 'affectedFiles'), protectedFiles: list(text, 'protectedFiles'), tasks: { total: 0, checked: 0 }, ready: true, waitingOn: [], problems: [] };",
   '});',
   "const files = ['.spec-brief.json', 'spec-brief.json', ...names.map((name) => 'briefs/' + name)].map((path) => ({ path, sha256: digest(join(root, path)) }));",
   "if (settings.bad === true) files[0].sha256 = 'not a digest';",

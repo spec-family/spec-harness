@@ -596,7 +596,7 @@ describe('the siblings', () => {
     installFake(repo.root, 'spec-guard', JSON.stringify({ version: '0.29.0' }));
     const pretty = await cli(['doctor'], repo.root);
     expect(pretty.code).toBe(1);
-    expect(pretty.stdout).toContain(`found     spec-brief  ${process.execPath} ${bin} (0.12.1)`);
+    expect(pretty.stdout).toContain(`found     spec-brief  ${process.execPath} ${bin} (0.12.1)\n${' '.repeat(22)}note: spec-brief 0.12.1 does not say which briefs it cannot read whole, so a brief whose protectedFiles it cannot read is guarded as one that protects nothing: spec-brief 0.15.0 or later says so, and the guard then holds that brief's writes\n`);
     expect(pretty.stdout).toContain(
       'outdated  spec-guard  spec-guard 0.29.0 is installed here; spec-harness needs 0.30.0 or later: npm install --save-dev @spec-family/spec-guard@latest',
     );

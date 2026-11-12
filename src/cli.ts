@@ -32,7 +32,7 @@ import type { Base } from './round.js';
 import type { BriefRow } from './types.js';
 import { declaredVersion, SiblingError } from './siblings.js';
 import { answerBeside, emptyValue, heldHookLine, isBlank, isClaudeHook, readHookLine, refusal, twoValues, unreadHookLine, type Command, type LineFault } from './usage.js';
-import { CLAUDE_CODE_MINIMUM, MINIMUM_VERSIONS, type ClaudeCodeCheck } from './versions.js';
+import { CLAUDE_CODE_MINIMUM, MINIMUM_VERSIONS, reportsUnread, unreportedSaid, type ClaudeCodeCheck } from './versions.js';
 import {
   activeBrief,
   answerOf,
@@ -355,6 +355,9 @@ async function sessionProblem(options: Options, io: CliIO, root: string, cwd: st
       // A brief spec-brief cannot read whole holds every write but one to
       // itself, as a protection that cannot be read does (guard.ts).
       if (brief === null) return null;
+      // A spec-brief before the field cannot say, and is said once here,
+      // where a write is decided as if it read the brief whole.
+      if (brief.problems === undefined) return unreportedSaid(null);
       const { describeUnread, unreadScope } = await import('./guard.js');
       const unread = unreadScope(brief);
       return unread.length === 0 ? null : `${describeUnread(brief, unread)}, ${held}, but one to ${brief.file} itself and ${outside}: spec-brief lint names the problem`;
@@ -820,7 +823,12 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
         '',
       ].join('\n'),
     );
-    for (const row of rows) io.stdout.write(`${row.state.padEnd(8)}  ${row.tool.padEnd(10)}  ${row.detail}\n`);
+    for (const row of rows) {
+      io.stdout.write(`${row.state.padEnd(8)}  ${row.tool.padEnd(10)}  ${row.detail}\n`);
+      // A spec-brief that runs and cannot say which briefs it could not
+      // read whole, said once, under its line (ADR-0005).
+      if (row.tool === 'spec-brief' && row.state === 'found' && row.version !== null && !reportsUnread(row.version)) io.stdout.write(`${' '.repeat(22)}note: ${unreportedSaid(row.version)}\n`);
+    }
   }
   // An outdated sibling is a problem to fix, where a missing optional one is
   // a choice; with none installed, the harness can check nothing; and so is

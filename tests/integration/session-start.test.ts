@@ -9,11 +9,13 @@
  * Claude Code's line hands it, with the question Claude Code asks.
  */
 
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { brief, BRIEF_FILE, cleanup, cli, install, installFake, parsed, repository, temp, type Repository } from './helpers.js';
+import { reportsUnread, unreportedSaid } from '../../src/versions.js';
+import { brief, BRIEF_FILE, cleanup, cli, install, installFake, parsed, repository, ROOT, temp, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -34,11 +36,20 @@ async function start(repo: Repository, options: { readonly line?: readonly strin
   return cli(['hook', 'claude', ...(options.line ?? [])], cwd, { stdin: question(cwd, options.source), env: { CLAUDE_PROJECT_DIR: cwd, ...options.env } });
 }
 
+/**
+ * What a session start says where all is well and a brief is named: nothing,
+ * under a spec-brief that says which briefs it could not read whole; under
+ * the one the suite installs before it does, that it does not (ADR-0005).
+ */
+const INSTALLED = (JSON.parse(readFileSync(join(ROOT, 'node_modules', '@spec-family', 'spec-brief', 'package.json'), 'utf8')) as { version: string }).version;
+
 /** What is said for `line`: the same to the person and to Claude, exit 0. */
 function said(line: string) {
   const text = `spec-harness: ${line}`;
   return { code: 0, stderr: '', stdout: `${JSON.stringify({ systemMessage: text, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } })}\n` };
 }
+
+const NAMED_WELL = reportsUnread(INSTALLED) ? { code: 0, stdout: '', stderr: '' } : said(unreportedSaid(null));
 
 const HELD = 'so every write of this session is held until it is mended';
 /** The writes a session's problem does not hold: one outside every work tree goes ahead, as the report at a turn's end says (ADR-0005). */
@@ -50,7 +61,7 @@ describe('the hook as a session starts', () => {
     const named = project('brief/001-rotate');
     for (const source of ['startup', 'resume', 'clear', 'compact', 'fork', 'what Claude Code adds next']) {
       expect(await start(plain, { source }), source).toEqual({ code: 0, stdout: '', stderr: '' });
-      expect(await start(named, { source }), source).toEqual({ code: 0, stdout: '', stderr: '' });
+      expect(await start(named, { source }), source).toEqual(NAMED_WELL);
     }
     // A question with no source is a session start all the same.
     expect(await cli(['hook', 'claude'], plain.root, { stdin: JSON.stringify({ hook_event_name: 'SessionStart', cwd: plain.root }), env: { CLAUDE_PROJECT_DIR: plain.root } })).toEqual({ code: 0, stdout: '', stderr: '' });
@@ -90,7 +101,7 @@ describe('the hook as a session starts', () => {
       cli(['hook', 'claude'], root, { stdin: JSON.stringify({ session_id: 's', hook_event_name: 'SessionStart', source: 'startup', ...(cwd === undefined ? {} : { cwd }) }), env: { CLAUDE_PROJECT_DIR: root } });
     expect(await ask(repo.root, unknown)).toEqual(UNKNOWN);
     expect(await ask(repo.root, join(unknown, 'src'))).toEqual(UNKNOWN);
-    expect(await ask(repo.root, listed)).toEqual({ code: 0, stdout: '', stderr: '' });
+    expect(await ask(repo.root, listed)).toEqual(NAMED_WELL);
     // The project's own work tree, and a question that names no directory, are the project's.
     expect(await ask(repo.root, repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });
     expect(await ask(repo.root)).toEqual({ code: 0, stdout: '', stderr: '' });

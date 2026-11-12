@@ -119,3 +119,24 @@ export function checkClaudeCode(answer: ClaudeCodeAnswer): ClaudeCodeCheck {
   if (parsed === null) return { state: 'unknown', reason: `claude --version printed "${said}", which is not a version` };
   return { state: meets(parsed, parseVersion(CLAUDE_CODE_MINIMUM) as Version) ? 'ok' : 'outdated', version: first };
 }
+
+/**
+ * The first release of spec-brief whose list says which briefs it could
+ * not read whole, in each row's `problems` (spec-brief#89). An earlier one
+ * lists a field it could not parse as empty, so a brief whose
+ * `protectedFiles` it could not read is guarded as one that protects
+ * nothing, with no word (round 29's evaluation; ADR-0005).
+ */
+export const PROBLEMS_SINCE = '0.15.0';
+
+/** Whether a spec-brief of `version` says which briefs it could not read whole; a version that cannot be read is said not to. */
+export function reportsUnread(version: string): boolean {
+  const parsed = parseVersion(version);
+  return parsed !== null && meets(parsed, parseVersion(PROBLEMS_SINCE)!);
+}
+
+/** What is said of a spec-brief that does not say which briefs it could not read whole, by its version where it is known. */
+export function unreportedSaid(version: string | null): string {
+  const which = version === null ? 'the spec-brief installed here' : `spec-brief ${version}`;
+  return `${which} does not say which briefs it cannot read whole, so a brief whose protectedFiles it cannot read is guarded as one that protects nothing: spec-brief ${PROBLEMS_SINCE} or later says so, and the guard then holds that brief's writes`;
+}

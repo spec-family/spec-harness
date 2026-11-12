@@ -81,9 +81,12 @@ cannot turn a run red. The family's policy is
   could not read the brief's text or front matter whole, or its
   `protectedFiles` or `affectedFiles`, the guard refuses every write but
   one to the brief itself, reason `unreadable-protection`, in spec-brief's
-  words, and a session that starts says so. A spec-brief that does not say
-  decides as before; the release of spec-brief that adds `problems` is the
-  one to install with this
+  words, and a session that starts says so. It needs spec-brief 0.15.0 or
+  later, the first whose list says it: an earlier one is read as one that
+  cannot say, never as one that read every brief whole, and `doctor`, under
+  its line, and a session's start, where a brief is named, say that it
+  cannot and that 0.15.0 does. The minimum spec-brief this release runs
+  stays 0.12.0, so an earlier one still runs, as before
   ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
 
 ### Fixed

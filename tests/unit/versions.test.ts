@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { SIBLINGS } from '../../src/config.js';
-import { checkClaudeCode, checkVersion, CLAUDE_CODE_MINIMUM, meets, MINIMUM_VERSIONS, parseVersion, type Version } from '../../src/versions.js';
+import { checkClaudeCode, checkVersion, CLAUDE_CODE_MINIMUM, meets, MINIMUM_VERSIONS, parseVersion, PROBLEMS_SINCE, reportsUnread, unreportedSaid, type Version } from '../../src/versions.js';
 
 const version = (text: string): Version => {
   const parsed = parseVersion(text);
@@ -121,6 +121,18 @@ describe('an installed sibling', () => {
     for (const name of SIBLINGS) {
       expect(parseVersion(MINIMUM_VERSIONS[name])?.prerelease, name).toBe(false);
     }
+  });
+});
+
+describe('a spec-brief that says which briefs it could not read whole', () => {
+  it('is 0.15.0 or later, a version that cannot be read is said not to be, and one before it is said by its version', () => {
+    expect(PROBLEMS_SINCE).toBe('0.15.0');
+    for (const version of ['0.15.0', '0.15.1', '0.16.0', '1.0.0']) expect(reportsUnread(version), version).toBe(true);
+    for (const version of ['0.14.9', '0.13.1', '0.15.0-rc.1', 'latest', '']) expect(reportsUnread(version), version).toBe(false);
+    expect(unreportedSaid('0.14.0')).toBe(
+      "spec-brief 0.14.0 does not say which briefs it cannot read whole, so a brief whose protectedFiles it cannot read is guarded as one that protects nothing: spec-brief 0.15.0 or later says so, and the guard then holds that brief's writes",
+    );
+    expect(unreportedSaid(null)).toMatch(/^the spec-brief installed here does not say which briefs it cannot read whole, /);
   });
 });
 

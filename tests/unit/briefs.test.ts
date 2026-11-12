@@ -101,7 +101,8 @@ describe('spec-brief list documents', () => {
       { rule: 'encoding', field: null, line: 1, message: 'the brief is UTF-16' },
     ];
     expect(parseBriefList(document([{ ...FULL, problems }]))).toEqual([{ ...FULL, problems }]);
-    expect(parseBriefList(document([{ ...FULL, problems: [] }]))).toEqual([FULL]);
+    // Read whole, and a spec-brief that cannot say, are told apart.
+    expect(parseBriefList(document([{ ...FULL, problems: [] }]))).toEqual([{ ...FULL, problems: [] }]);
     expect(parseBriefList(document([FULL]))[0]).not.toHaveProperty('problems');
     expect(refusal(document([{ ...FULL, problems: {} }]))).toBe('briefs[0].problems is not a list');
     expect(refusal(document([{ ...FULL, problems: ['x'] }]))).toBe('briefs[0].problems[0] is not an object');

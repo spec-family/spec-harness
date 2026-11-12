@@ -45,13 +45,15 @@ function nullableString(value: unknown, where: string): string | null {
 }
 
 /**
- * What a row says spec-brief could not read of the brief, its `problems`:
- * none where the row has no such field, as a spec-brief before the field
- * prints none, and a refusal for one in a shape not read here, since a
- * guard that passed over it would guard what spec-brief did not read.
+ * What a row says spec-brief could not read of the brief, its `problems`,
+ * none where it read the whole; `undefined` where the row has no such
+ * field, as a spec-brief before the field prints none, which cannot say
+ * and is not read as saying none; and a refusal for one in a shape not
+ * read here, since a guard that passed over it would guard what
+ * spec-brief did not read.
  */
-function problemsOf(value: unknown, where: string): BriefProblem[] {
-  if (value === undefined) return [];
+function problemsOf(value: unknown, where: string): BriefProblem[] | undefined {
+  if (value === undefined) return undefined;
   if (!Array.isArray(value)) throw new SiblingOutputError(`${where}.problems is not a list`);
   return value.map((item, index) => {
     const at = `${where}.problems[${index}]`;
@@ -107,7 +109,7 @@ export function parseBriefList(document: unknown): BriefRow[] {
       },
       ready: row['ready'] === true,
       waitingOn: strings(row['waitingOn'] ?? [], `${where}.waitingOn`),
-      ...(problems.length === 0 ? {} : { problems }),
+      ...(problems === undefined ? {} : { problems }),
     };
   });
 }
