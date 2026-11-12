@@ -266,7 +266,7 @@ describe('an argument a command does not take', () => {
     expect(refused(['context', '012', 'extra'])).toBe('context takes one argument at most, a brief\'s id, not "012", "extra"');
     for (const command of ['rulings', 'audit', 'probe']) expect(refused([command, '012', 'x', 'y'])).toBe(`${command} takes one argument at most, a brief's id, not "012", "x", "y"`);
     expect(refused(['rule', 'E-012-1', 'extra', '--allow', '--note', 'n'])).toBe('rule takes one argument, the escalation\'s id, not "E-012-1", "extra"');
-    expect(refused(['hook', 'git', 'extra'])).toBe('hook takes one argument, "claude" or "git", not "git", "extra"');
+    expect(refused(['hook', 'git', 'extra'])).toBe('hook takes one argument, "claude", "codex", "copilot" or "git", not "git", "extra"');
     // Shown as JSON, where an empty one can be seen.
     expect(refused(['doctor', ''])).toBe('doctor takes no argument, not ""');
   });
@@ -530,7 +530,7 @@ describe("Claude Code's hook", () => {
     expect(refused(['hook', 'git', '--brief', ''])).toMatch(/^--brief is "", /);
     expect(refused(['hook', 'git', '--root', 'nowhere'], () => false)).toMatch(/^--root is "nowhere", which is not a directory; /);
     // And claude anywhere but first is an argument like any other.
-    expect(refused(['hook', 'git', 'claude'])).toBe('hook takes one argument, "claude" or "git", not "git", "claude"');
+    expect(refused(['hook', 'git', 'claude'])).toBe('hook takes one argument, "claude", "codex", "copilot" or "git", not "git", "claude"');
     expect(refused(['guard', 'claude', '--note', 'x'])).toMatch(/^guard does not take --note; /);
   });
 });

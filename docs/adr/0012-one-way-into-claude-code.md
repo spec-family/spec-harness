@@ -709,6 +709,45 @@ a file or carries a patch (`otherAgent`, hooks.ts). It checks nothing for
 such a question: it cannot answer in a language the asker reads. Adapters
 of their own, `hook codex` and `hook copilot`, are round 29's next step
 (its D2).
+*Amended again 2026-11-12.* **Two more ways in: Codex and Copilot.** Round
+29 decided (its D2) to guard the writes of the two agents whose hooks can
+refuse one and whose shapes are the nearest Claude Code's: OpenAI's Codex
+CLI and GitHub Copilot. The guard's decision is one, and each agent's
+question is read into the tool and the files it writes, and the decision
+answered in the agent's language, by `hook codex` and `hook copilot`;
+`hook claude` answers as it did. The shapes are from Codex's hooks
+reference and its source at c0cc9fc, and from Copilot's hooks reference,
+read 2026-11-12.
+
+- Codex's question has Claude Code's shape. `apply_patch` carries its patch
+  as `tool_input.command` and names no file in a field, so the files are
+  read from the patch's headers; a shell command that hands `apply_patch` a
+  heredoc is applied by Codex too, and is read the same way. A refusal is
+  `hookSpecificOutput` with a reason: Codex counts one without a reason as
+  a hook that failed, and an `ask` too, so where the guard would ask it
+  refuses, and says why.
+- Copilot's question is `toolName` and `toolArgs`, which its reference
+  types as unknown and its tutorial as a JSON string; both are read. Its
+  reference names no argument a file is in, so every name an editing tool
+  gives one is read. The answer is `permissionDecision` at the top of the
+  object, `deny` or `ask`.
+- Both run the tool where a hook fails, times out or says nothing they
+  read, and Copilot refuses where one exits otherwise than 0, with a reason
+  of its own. So the two refuse in words what they cannot read or check,
+  with exit 0, where `hook claude`, whose question Claude Code's own hooks
+  shape, says it and passes: a new way in fails closed.
+- `init` writes each agent's file where the repository keeps the
+  directory the agent reads it from, `.codex` and `.github/hooks`, and
+  neither elsewhere. Codex's entry is a shell string, run from the
+  session's directory, so it asks git for the top under a POSIX shell.
+- Copilot runs the lines of `.claude/settings.json` as well, by its
+  documentation, as the amendment before this one says, and that line,
+  which it cannot run, holds every edit whatever `hook copilot` answers.
+  A line of Claude Code's that Copilot runs too, or one it is told to
+  pass over, is round 30's.
+- Not done: Cursor, Gemini CLI and Devin, round 30 or later; a hook after a
+  write for either agent, so a write outside the scope is not warned of
+  there; a live test in either agent, which nothing here can run.
 
 ## Consequences
 

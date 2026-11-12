@@ -133,6 +133,110 @@ describe('hook claude', () => {
     );
   });
 
+  it('answers Codex before apply_patch, and before a shell command that hands it a patch, by the same decision (ADR-0012)', async () => {
+    const codex = (stdin: string, root = repo.root) => cli(['hook', 'codex'], root, { stdin, env: {} });
+    const ask = (tool: string, command: string, cwd = repo.root): string => JSON.stringify({ session_id: 's', turn_id: 't', hook_event_name: 'PreToolUse', cwd, tool_name: tool, tool_use_id: 'c', tool_input: { command } });
+    const patch = (path: string): string => ['*** Begin Patch', `*** Update File: ${path}`, '@@', '-a', '+b', '*** End Patch', ''].join('\n');
+    const refused = await codex(ask('apply_patch', patch('src/db/schema.ts')));
+    expect(refused.code).toBe(0);
+    expect(JSON.parse(refused.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason:
+          'spec-harness: brief 001 does not empower this round to change src/db/schema.ts (protectedFiles: src/db/**). Next: if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool.',
+      },
+    });
+    expect(JSON.parse((await codex(ask('Bash', `apply_patch <<'EOF'\n${patch('src/db/old.ts')}EOF\n`))).stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+    for (const question of [ask('apply_patch', patch('src/auth/a.ts')), ask('Bash', 'ls'), ask('apply_patch', patch('README.md'))]) {
+      expect(await codex(question)).toEqual({ code: 0, stdout: '', stderr: '' });
+    }
+    const held = await codex('not json');
+    expect(JSON.parse(held.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringContaining('the hook input is not JSON, so this write is held') });
+    const asking = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }) }, { outOfScope: 'ask' });
+    asking.git('checkout', '-q', '-b', 'brief/001-rotate');
+    const asked = JSON.parse((await codex(ask('apply_patch', patch('README.md'), asking.root), asking.root)).stdout).hookSpecificOutput;
+    expect(asked.permissionDecision).toBe('deny');
+    expect(asked.permissionDecisionReason).toMatch(/^spec-harness: this write is the person's to decide, and Codex cannot ask them through a hook/);
+  });
+
+  it('answers Copilot before it creates or edits a file, by the same decision, with permissionDecision at the top (ADR-0012)', async () => {
+    const copilot = (stdin: string, root = repo.root) => cli(['hook', 'copilot'], root, { stdin, env: {} });
+    const ask = (tool: string, args: unknown, cwd = repo.root): string => JSON.stringify({ sessionId: 's', timestamp: 1, cwd, toolName: tool, toolArgs: args });
+    const refused = await copilot(ask('edit', JSON.stringify({ path: join(repo.root, 'src', 'db', 'schema.ts'), old_str: 'a', new_str: 'b' })));
+    expect(refused.code).toBe(0);
+    expect(JSON.parse(refused.stdout)).toEqual({
+      permissionDecision: 'deny',
+      permissionDecisionReason:
+        'spec-harness: brief 001 does not empower this round to change src/db/schema.ts (protectedFiles: src/db/**). Next: if the round cannot be done without it, stop and ask for a ruling: spec-harness escalate --path <file> --reason <why>, or the request_escalation tool.',
+    });
+    expect(await copilot(ask('create', { path: 'src/auth/b.ts', file_text: 'x' }))).toEqual({ code: 0, stdout: '', stderr: '' });
+    expect(await copilot(ask('bash', '{"command":"ls"}'))).toEqual({ code: 0, stdout: '', stderr: '' });
+    expect(JSON.parse((await copilot(ask('edit', { old_str: 'a' }))).stdout)).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringContaining('the hook input names edit and no file it writes, so this write is held') });
+    const asking = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }) }, { outOfScope: 'ask' });
+    asking.git('checkout', '-q', '-b', 'brief/001-rotate');
+    expect(JSON.parse((await copilot(ask('create', { path: 'README.md' }, asking.root), asking.root)).stdout).permissionDecision).toBe('ask');
+  });
+
+  describe('hook codex and hook copilot, where the write is not decided as the brief says (ADR-0012)', () => {
+    const AGENTS = ['codex', 'copilot'] as const;
+    /** A write of `path`, asked from `cwd`, as each agent asks it: before the write, or after it for Codex. */
+    const ask = (agent: (typeof AGENTS)[number], path: string, cwd: string, event = 'PreToolUse'): string =>
+      agent === 'codex'
+        ? JSON.stringify({ hook_event_name: event, cwd, tool_name: 'apply_patch', tool_input: { command: ['*** Begin Patch', `*** Update File: ${path}`, '*** End Patch', ''].join('\n') } })
+        : JSON.stringify({ cwd, toolName: 'edit', toolArgs: { path } });
+    /** Why the agent's answer refuses the write, where it does. */
+    const refusal = (agent: (typeof AGENTS)[number], stdout: string): string => {
+      const answer = JSON.parse(stdout) as { hookSpecificOutput?: { permissionDecision: string; permissionDecisionReason: string }; permissionDecision?: string; permissionDecisionReason?: string };
+      const said = agent === 'codex' ? answer.hookSpecificOutput! : { permissionDecision: answer.permissionDecision!, permissionDecisionReason: answer.permissionDecisionReason! };
+      expect(said.permissionDecision).toBe('deny');
+      return said.permissionDecisionReason;
+    };
+
+    it('holds every write while the named brief is unknown or archived, in the words hook claude says it with', async () => {
+      const closed = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }) });
+      closed.git('checkout', '-q', '-b', 'brief/001-rotate');
+      mkdirSync(join(closed.root, 'briefs', 'archive'), { recursive: true });
+      closed.git('mv', BRIEF_FILE, 'briefs/archive/001_rotate-tokens.md');
+      closed.commit('the round is archived');
+      for (const agent of AGENTS) {
+        const unknown = await cli(['hook', agent], repo.root, { stdin: ask(agent, 'src/auth/a.ts', repo.root), env: { SPEC_BRIEF: '404' } });
+        expect(unknown.code, agent).toBe(0);
+        expect(refusal(agent, unknown.stdout)).toBe('spec-harness: the environment names brief 404, and spec-brief knows no such brief. Next: fix the brief or the branch before writing.');
+        const archived = await cli(['hook', agent], closed.root, { stdin: ask(agent, 'src/a.ts', closed.root), env: {} });
+        expect(refusal(agent, archived.stdout)).toBe(
+          'spec-harness: the branch names brief 001, which is archived; a closed round writes nothing. Next: the round is archived and ends when this branch merges: write on the branch of a live brief.',
+        );
+      }
+    });
+
+    it('reads a question by the directory it names, passes one from a directory in no work tree, and answers nothing after a write', async () => {
+      const elsewhere = temp();
+      for (const agent of AGENTS) {
+        // Started from a directory in no work tree, about a write in the repository.
+        const refused = await cli(['hook', agent], elsewhere, { stdin: ask(agent, 'src/db/schema.ts', repo.root), env: {} });
+        expect(refusal(agent, refused.stdout)).toContain('brief 001 does not empower this round to change src/db/schema.ts');
+        expect(await cli(['hook', agent], elsewhere, { stdin: ask(agent, 'a.ts', elsewhere), env: {} }), agent).toEqual({ code: 0, stdout: '', stderr: '' });
+      }
+      expect(await cli(['hook', 'codex'], repo.root, { stdin: ask('codex', 'src/db/schema.ts', repo.root, 'PostToolUse'), env: {} })).toEqual({ code: 0, stdout: '', stderr: '' });
+    });
+
+    it('holds a write while the configuration does not load, but one to the configuration itself, and one spec-brief cannot answer for', async () => {
+      const unloaded = repository({ '.spec-harness.json': '{ not json' }, null);
+      const fake = temp();
+      write(fake, 'fail.js', 'process.stderr.write("no config\\n"); process.exit(2);\n');
+      const unanswered = repository({}, { tools: { 'spec-brief': ['node', join(fake, 'fail.js')] } });
+      unanswered.git('checkout', '-q', '-b', 'brief/001-x');
+      for (const agent of AGENTS) {
+        const held = await cli(['hook', agent], unloaded.root, { stdin: ask(agent, 'a.ts', unloaded.root), env: {} });
+        expect(refusal(agent, held.stdout)).toMatch(/^spec-harness: cannot check this write: \.spec-harness\.json is not valid JSON: .+\. Next: run spec-harness doctor, and fix what it says\.$/);
+        expect(await cli(['hook', agent], unloaded.root, { stdin: ask(agent, '.spec-harness.json', unloaded.root), env: {} }), agent).toEqual({ code: 0, stdout: '', stderr: '' });
+        const unlisted = await cli(['hook', agent], unanswered.root, { stdin: ask(agent, 'a.ts', unanswered.root), env: {} });
+        expect(refusal(agent, unlisted.stdout)).toBe('spec-harness: cannot check this write: spec-brief could not list the briefs: no config. Next: run spec-harness doctor, and fix what it says.');
+      }
+    });
+  });
+
   it('ignores a tool that writes no file, without asking spec-brief', async () => {
     // A command that cannot run: the hook must not need it for a Bash call.
     const broken = repository({}, { tools: { 'spec-brief': ['no-such-program-for-spec-harness'] } });
@@ -172,6 +276,11 @@ describe('hook claude', () => {
     const guard = await cli(['guard', share, '--format', 'json'], repo.root, { platform: 'win32' });
     expect(parsed<{ decisions: { reason: string; message: string }[] }>(guard).decisions).toMatchObject([{ reason: 'held', message: `${share} names a share on this machine, which can be the repository by another name, and the guard cannot tell which directory it is` }]);
     expect(guard.code).toBe(1);
+    // hook codex and hook copilot hold it in their own words.
+    const codex = await cli(['hook', 'codex'], repo.root, { stdin: JSON.stringify({ hook_event_name: 'PreToolUse', cwd: repo.root, tool_name: 'apply_patch', tool_input: { command: `*** Begin Patch\n*** Add File: ${share}\n+x\n*** End Patch\n` } }), env: {}, platform: 'win32' });
+    expect(JSON.parse(codex.stdout).hookSpecificOutput).toEqual({ hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: held });
+    const copilot = await cli(['hook', 'copilot'], repo.root, { stdin: JSON.stringify({ cwd: repo.root, toolName: 'create', toolArgs: JSON.stringify({ path: share }) }), env: {}, platform: 'win32' });
+    expect(JSON.parse(copilot.stdout)).toEqual({ permissionDecision: 'deny', permissionDecisionReason: held });
   });
 
   it.skipIf(process.platform !== 'win32')('reads a path through a drive\'s share on this machine as the drive, and holds one through another share of it', async () => {
@@ -191,6 +300,12 @@ describe('hook claude', () => {
     );
     const guard = await cli(['guard', `\\\\localhost\\${drive}$${tail}`, '--format', 'json'], repo.root);
     expect(JSON.parse(guard.stdout).decisions[0]).toMatchObject({ verdict: 'deny', reason: 'protected' });
+    // hook codex and hook copilot read the drive's share as the drive, as hook claude does.
+    const patch = ['*** Begin Patch', `*** Update File: \\\\localhost\\${drive}$${tail}`, '*** End Patch', ''].join('\n');
+    const codex = await cli(['hook', 'codex'], repo.root, { stdin: JSON.stringify({ hook_event_name: 'PreToolUse', cwd: repo.root, tool_name: 'apply_patch', tool_input: { command: patch } }), env: {} });
+    expect(JSON.parse(codex.stdout).hookSpecificOutput.permissionDecisionReason).toContain('brief 001 does not empower this round to change src/db/schema.ts');
+    const copilot = await cli(['hook', 'copilot'], repo.root, { stdin: JSON.stringify({ cwd: repo.root, toolName: 'edit', toolArgs: { path: `//localhost/${drive}$${tail.replaceAll('\\', '/')}` } }), env: {} });
+    expect(JSON.parse(copilot.stdout).permissionDecisionReason).toContain('brief 001 does not empower this round to change src/db/schema.ts');
   });
 
   it('finds the project from CLAUDE_PROJECT_DIR, or --root, when run from elsewhere', async () => {
@@ -350,8 +465,8 @@ describe('hook git', () => {
     });
   });
 
-  it('answers only claude and git', async () => {
-    expect(await cli(['hook'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: hook takes "claude" or "git"\n' });
+  it('answers only claude, codex, copilot and git', async () => {
+    expect(await cli(['hook'], repo.root)).toEqual({ code: 2, stdout: '', stderr: 'spec-harness: hook takes "claude", "codex", "copilot" or "git"\n' });
     expect((await cli(['hook', 'cursor'], repo.root)).code).toBe(2);
   });
 });

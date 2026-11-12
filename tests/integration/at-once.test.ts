@@ -265,6 +265,31 @@ describe('audit', () => {
   });
 });
 
+describe('hook codex and hook copilot', () => {
+  it('ask git nothing for a question whose tool writes no file', async () => {
+    const repo = onBrief();
+    const codex = await cli(['hook', 'codex'], repo.root, { stdin: JSON.stringify({ hook_event_name: 'PreToolUse', cwd: repo.root, tool_name: 'Bash', tool_input: { command: 'ls' } }), env: {} });
+    const copilot = await cli(['hook', 'copilot'], repo.root, { stdin: JSON.stringify({ cwd: repo.root, toolName: 'bash', toolArgs: { command: 'ls' } }), env: {} });
+    expect([codex, copilot]).toEqual([
+      { code: 0, stdout: '', stderr: '' },
+      { code: 0, stdout: '', stderr: '' },
+    ]);
+    expect(seen.log).toEqual([]);
+  });
+
+  it('hold a write in words where git cannot be started to read the work tree, an error that is no configuration\'s', async () => {
+    const repo = onBrief();
+    seen.thrown = { part: TOP };
+    const codex = await cli(['hook', 'codex'], repo.root, { stdin: JSON.stringify({ hook_event_name: 'PreToolUse', cwd: repo.root, tool_name: 'apply_patch', tool_input: { command: '*** Begin Patch\n*** Add File: src/new.ts\n+x\n*** End Patch\n' } }), env: {} });
+    expect(codex.code).toBe(0);
+    expect(JSON.parse(codex.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringMatching(/^spec-harness: cannot check this write: cannot start git rev-parse --show-toplevel.*\. Next: run spec-harness doctor, and fix what it says\.$/) });
+    const copilot = await cli(['hook', 'copilot'], repo.root, { stdin: JSON.stringify({ cwd: repo.root, toolName: 'create', toolArgs: { path: 'src/new.ts' } }), env: {} });
+    expect(JSON.parse(copilot.stdout)).toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringMatching(/^spec-harness: cannot check this write: cannot start git rev-parse --show-toplevel/) });
+    // The branch, asked beside the work tree, is answered after the run ends.
+    await settled();
+  });
+});
+
 describe('init', () => {
   it("asks git at once for the remote's default branch, the local branches and where its hooks are", async () => {
     const repo = repository({ 'README.md': '# x\n' }, null);

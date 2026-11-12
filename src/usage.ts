@@ -182,7 +182,7 @@ const SHAPE = literal({
     limit: null,
     argument: { role: 'a path', instead: 'give it the paths the round would write' },
   },
-  hook: { options: ['brief', 'base', 'root'], limit: { most: 1, takes: 'one argument, "claude" or "git"' } },
+  hook: { options: ['brief', 'base', 'root'], limit: { most: 1, takes: 'one argument, "claude", "codex", "copilot" or "git"' } },
   // `--list` and `--show` print what waits and raise nothing: neither reads
   // the parts of a request, nor a brief, since what waits is every round's.
   escalate: {

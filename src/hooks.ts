@@ -300,6 +300,187 @@ export function warningsOf(decisions: readonly Decision[]): Warning[] {
   return decisions.filter((decision) => decision.verdict === 'warn').map(({ message, hint }) => ({ message, hint }));
 }
 
+/* ------------------------------------------------------- other agents' hooks */
+
+/**
+ * The agents besides Claude Code whose hooks spec-harness answers, each in
+ * its own language and with the guard's one decision (ADR-0012, amended
+ * 2026-11-12): OpenAI's Codex CLI and GitHub Copilot, its cloud agent and
+ * its CLI.
+ */
+export type Agent = 'codex' | 'copilot';
+
+/**
+ * A line of a patch in the form Codex's `apply_patch` takes, that names a
+ * file it writes: one it adds, deletes or updates, or the name an update
+ * moves it to (openai/codex, codex-rs/core/assets/tools/apply_patch.lark,
+ * read 2026-11-12). The parser there reads the markers past whitespace,
+ * and the name to the end of its line, trimmed: a `.` stops at a carriage
+ * return as at the line's end.
+ */
+const PATCH_FILE = /^\s*\*\*\* (?:Add File|Delete File|Update File|Move to):\s*(\S.*)/;
+
+/** The files a patch in apply_patch's form writes, each once, as it names them: relative to the session's directory, or absolute. */
+export function patchPaths(patch: string): string[] {
+  const paths: string[] = [];
+  for (const line of patch.split('\n')) {
+    const header = PATCH_FILE.exec(line);
+    if (header === null) continue;
+    const path = header[1]!.trimEnd();
+    if (!paths.includes(path)) paths.push(path);
+  }
+  return paths;
+}
+
+/** Whether a text holds a patch in apply_patch's form, as a shell command that runs `apply_patch` with a heredoc does. */
+function holdsPatch(text: string): boolean {
+  return text.includes('*** Begin Patch');
+}
+
+/**
+ * Reads Codex's hook input, which has Claude Code's shape (Codex's hooks
+ * reference, learn.chatgpt.com/docs/hooks, read 2026-11-12): the files
+ * `apply_patch` writes are in the patch it carries as `tool_input.command`,
+ * with no field of their own, and a shell command that runs `apply_patch`
+ * with a heredoc, which Codex applies too, comes as `Bash` with the patch
+ * in its command. A tool that writes a file of Claude Code's names, which
+ * no Codex tool has, is read as `hook claude` reads it.
+ */
+export function parseCodexHook(raw: string): HookRequest | { readonly error: string } {
+  const read = parseClaudeHook(raw);
+  if ('error' in read) return read;
+  // parseClaudeHook read the same text as an object, so this reads, and is
+  // one: the test of it is the compiler's, and its mutant equivalent.
+  const value: unknown = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+  const input = isObject(value) && isObject(value['tool_input']) ? value['tool_input'] : {};
+  const command = input['command'];
+  if (typeof command !== 'string' || (read.tool !== 'apply_patch' && !holdsPatch(command))) {
+    return read.tool === 'apply_patch' ? { error: 'the hook input names apply_patch and no patch in tool_input.command' } : read;
+  }
+  const paths = patchPaths(command);
+  if (paths.length === 0) return { error: `the hook input names ${read.tool} with a patch that names no file` };
+  return { ...read, paths };
+}
+
+/**
+ * The tools of Copilot's that write a file, by the names its hook input
+ * gives them, as Copilot's hooks reference lists them beside the names of
+ * Claude Code's they stand for (docs.github.com/en/copilot/reference/hooks-reference,
+ * read 2026-11-12): `create` for Write, `edit`, `str_replace_editor` and
+ * `apply_patch` for Edit.
+ */
+export const COPILOT_WRITING_TOOLS: readonly string[] = ['create', 'edit', 'str_replace_editor', 'apply_patch'];
+
+/**
+ * The fields a Copilot tool may name its file under. The reference gives
+ * no argument's name, so every name a file is given by an editing tool of
+ * the agents read is read: a guard that missed the one Copilot sends would
+ * allow everything.
+ */
+const COPILOT_PATH_FIELDS: readonly string[] = ['path', 'file_path', 'filePath', 'filename', 'file'];
+
+/**
+ * Reads Copilot's preToolUse input, `{ toolName, toolArgs, cwd, ... }`, in
+ * the camelCase form its hooks file takes (the reference above). Its
+ * reference types `toolArgs` as unknown and its tutorial calls it a JSON
+ * string, so both are read. The file of a writing tool is read from each
+ * field a file is named under, and from a patch in apply_patch's form in
+ * any argument. The PascalCase form Copilot's CLI also sends is Claude
+ * Code's, and is read as `hook claude` reads it.
+ */
+export function parseCopilotHook(raw: string): HookRequest | { readonly error: string } {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+  } catch {
+    return { error: 'the hook input is not JSON' };
+  }
+  if (!isObject(value)) return { error: 'the hook input is not a JSON object' };
+  if (!('toolName' in value)) return parseClaudeHook(raw);
+  const tool = value['toolName'];
+  if (typeof tool !== 'string') return { error: 'the hook input names no tool' };
+  let args = value['toolArgs'];
+  if (typeof args === 'string') {
+    try {
+      args = JSON.parse(args);
+    } catch {
+      return { error: `the hook input names ${tool} with arguments that are not JSON` };
+    }
+  }
+  const cwd = typeof value['cwd'] === 'string' ? value['cwd'] : null;
+  const session = typeof value['sessionId'] === 'string' ? value['sessionId'] : null;
+  const request = { event: 'PreToolUse', tool, cwd, session, call: null };
+  if (!COPILOT_WRITING_TOOLS.includes(tool)) return { ...request, paths: [] };
+  const given = isObject(args) ? args : {};
+  const paths: string[] = [];
+  for (const field of COPILOT_PATH_FIELDS) {
+    const path = given[field];
+    if (typeof path === 'string' && path !== '' && !paths.includes(path)) paths.push(path);
+  }
+  for (const text of Object.values(given)) {
+    if (typeof text === 'string' && holdsPatch(text)) for (const path of patchPaths(text)) if (!paths.includes(path)) paths.push(path);
+  }
+  if (paths.length === 0) return { error: `the hook input names ${tool} and no file it writes` };
+  return { ...request, paths };
+}
+
+/** What an answer to Codex or Copilot reads of a decision: its verdict, its message and its next step. */
+export type Held = Pick<Decision, 'verdict' | 'message' | 'hint'>;
+
+/** The decisions that hold a write, the refusals before the questions, or `null` where none does. */
+function holding(decisions: readonly Held[]): { readonly verdict: 'deny' | 'ask'; readonly list: readonly Held[] } | null {
+  const denied = decisions.filter((decision) => decision.verdict === 'deny');
+  if (denied.length > 0) return { verdict: 'deny', list: denied };
+  const asked = decisions.filter((decision) => decision.verdict === 'ask');
+  return asked.length > 0 ? { verdict: 'ask', list: asked } : null;
+}
+
+/**
+ * What Codex is told where the guard would put a write to the person:
+ * Codex reads an `ask` as a hook that failed and runs the tool (its hooks
+ * reference, and codex-rs/hooks/src/engine/output_parser.rs at c0cc9fc),
+ * so the write is refused, and the reason says the person was to decide.
+ */
+const NO_ASKING = 'spec-harness: this write is the person\'s to decide, and Codex cannot ask them through a hook, so it is refused: approve it outside the session, or run it in Claude Code, which asks';
+
+/**
+ * The answer to Codex before a write: a refusal, in Claude Code's words,
+ * which Codex reads (its hooks reference), with a reason, without which
+ * Codex counts the hook as failed and runs the tool; or nothing. Exit 0.
+ */
+export function codexResponse(decisions: readonly Held[]): HookResponse {
+  const held = holding(decisions);
+  if (held === null) return NONE;
+  const reason = held.verdict === 'ask' ? `${NO_ASKING}\n${reasonOf(held.list)}` : reasonOf(held.list);
+  return { stdout: `${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })}\n`, exitCode: 0 };
+}
+
+/**
+ * The answer to Copilot before a write: `permissionDecision` at the top of
+ * the object, `deny` or `ask`, with its reason, which Copilot requires for
+ * a refusal; or nothing (its hooks reference). Copilot's cloud agent reads
+ * `ask` as a refusal, and its CLI asks the person. Exit 0: a hook that
+ * exits otherwise is one Copilot counts as failed, and its reason is lost.
+ */
+export function copilotResponse(decisions: readonly Held[]): HookResponse {
+  const held = holding(decisions);
+  if (held === null) return NONE;
+  return { stdout: `${JSON.stringify({ permissionDecision: held.verdict, permissionDecisionReason: reasonOf(held.list) })}\n`, exitCode: 0 };
+}
+
+/**
+ * The answer, in the agent's language, before a write the hook could not
+ * check or whose question it could not read: a refusal, with why. Each of
+ * the two runs the tool where a hook fails, times out or says nothing it
+ * reads, so a write the guard cannot see is held, where `hook claude`,
+ * whose question Claude Code's own hooks shape, says it and passes
+ * (ADR-0012).
+ */
+export function heldResponse(agent: Agent, why: string, next = 'run spec-harness doctor, and fix what it says'): HookResponse {
+  const held: Held = { verdict: 'deny', message: why, hint: next };
+  return agent === 'codex' ? codexResponse([held]) : copilotResponse([held]);
+}
+
 /**
  * What the hook reads besides its question and its line, as it decides: the
  * project Claude Code names, the brief the environment names, and the

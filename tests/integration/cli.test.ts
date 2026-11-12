@@ -286,6 +286,16 @@ describe('an error the harness did not expect', () => {
       code: 0,
       said: `${JSON.stringify({ systemMessage: 'spec-harness: the hook input could not be read: the pipe broke, so nothing it asks about is checked' })}\n`,
     });
+    // Codex and Copilot run the tool where a hook says nothing they read, so theirs hold the write, in words.
+    const reason = 'spec-harness: the hook input could not be read: the pipe broke, so this write is held. Next: run spec-harness doctor, and fix what it says.';
+    for (const [agent, held] of [
+      ['codex', { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }],
+      ['copilot', { permissionDecision: 'deny', permissionDecisionReason: reason }],
+    ] as const) {
+      let answered = '';
+      const asked = { stdout: { write: (text: string) => (answered += text) }, stderr: { write: (text: string) => text }, cwd: repo.root, env: {}, stdin: broke };
+      expect({ code: await run(['hook', agent], asked), answered }, agent).toEqual({ code: 0, answered: `${JSON.stringify(held)}\n` });
+    }
     // Where even that cannot be written, the run ends as any other whose output is gone.
     const unsaid = await refusing(['hook', 'claude'], repo.root, { stdin: broke });
     expect(unsaid.code).toBe(2);
