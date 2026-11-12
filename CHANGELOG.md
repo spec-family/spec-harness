@@ -138,6 +138,13 @@ cannot turn a run red. The family's policy is
   ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md),
   amended 2026-11-12).
 
+- **`audit --if-round --format json` says why it audited nothing**, in
+  `skipped`: `{ "reason": "no-brief-named", "brief": null }`, or
+  `{ "reason": "archived-on-this-branch", "brief": "020" }` on the branch
+  that archived the brief, where `brief` was `null` in both and only the
+  line on stderr told them apart. A run that audits a round prints no
+  `skipped`, and no other field changes.
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such
@@ -183,6 +190,12 @@ cannot turn a run red. The family's policy is
   the last keeps the small ones (ADR-0010, amended again 2026-11-12).
   Development tooling only: nothing spec-harness decides or reports
   changed. Upgrading: nothing to do.
+
+### Documentation
+
+- **On Azure Pipelines and Jenkins**, the audit reference's In CI sets
+  `SPEC_BRIEF` from the runner's branch variable, which the harness does not
+  read yet: reading it would change which brief a run names.
 
 ## 0.25.0
 

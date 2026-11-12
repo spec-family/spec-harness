@@ -771,7 +771,7 @@ describe('audit --if-round, where nothing names a brief', () => {
     const plain = repository({});
     const json = await cli(['audit', '--if-round', '--format', 'json'], plain.root);
     expect({ code: json.code, stderr: json.stderr }).toEqual({ code: 0, stderr: `spec-harness: ${LINE}\n` });
-    expect(parsed(json)).toMatchObject({ tool: 'spec-harness', command: 'audit', ok: true, brief: null, base: null, counts: { error: 0, warning: 0, note: 0 }, measured: null, findings: [], dependencies: [], installScripts: [] });
+    expect(parsed(json)).toMatchObject({ tool: 'spec-harness', command: 'audit', ok: true, brief: null, base: null, counts: { error: 0, warning: 0, note: 0 }, measured: null, findings: [], dependencies: [], installScripts: [], skipped: { reason: 'no-brief-named', brief: null } });
     expect(await cli(['audit', '--if-round', '--format', 'gitlab'], plain.root)).toEqual({ code: 0, stdout: '[]\n', stderr: `spec-harness: ${LINE}\n` });
     expect(await cli(['audit', '--if-round', '--format', 'github'], plain.root)).toEqual({ code: 0, stdout: '', stderr: `spec-harness: ${LINE}\n` });
     const sarif = await cli(['audit', '--if-round', '--format', 'sarif'], plain.root);

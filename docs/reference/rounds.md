@@ -35,6 +35,8 @@ CI checks out a commit on no branch, so on a detached HEAD the branch is the one
 
 A branch checked out always wins, and `doctor` says which variable named the branch. Without them, a round's own CI run would name no brief, and `premises` would report the premise the round retires as stale.
 
+Azure Pipelines and Jenkins name the branch in variables of their own, which the harness does not read yet: reading them would change which brief a run names, and could turn a run red. Set `SPEC_BRIEF` from them in the step, as [`audit`'s In CI](audit.md#in-ci) shows.
+
 A name that names no brief is not passed over for the next ([ADR-0004](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0004-the-active-brief-is-named-not-guessed.md)):
 
 - `--brief` given nothing, `--brief ""`, is refused, as `--brief "$ID"` is where the variable is not set: it was read as the option left out, and the branch's brief answered.
