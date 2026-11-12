@@ -314,15 +314,17 @@ export type Agent = 'codex' | 'copilot';
  * A line of a patch in the form Codex's `apply_patch` takes, that names a
  * file it writes: one it adds, deletes or updates, or the name an update
  * moves it to (openai/codex, codex-rs/core/assets/tools/apply_patch.lark,
- * read 2026-11-12). The parser there reads the markers past whitespace.
+ * read 2026-11-12). The parser there reads the markers past whitespace,
+ * and the name to the end of its line, trimmed: a `.` stops at a carriage
+ * return as at the line's end.
  */
-const PATCH_FILE = /^\s*\*\*\* (?:Add File|Delete File|Update File|Move to):\s*(\S(?:.*\S)?)\s*$/;
+const PATCH_FILE = /^\s*\*\*\* (?:Add File|Delete File|Update File|Move to):\s*(\S.*)/;
 
 /** The files a patch in apply_patch's form writes, each once, as it names them: relative to the session's directory, or absolute. */
 export function patchPaths(patch: string): string[] {
   const paths: string[] = [];
   for (const line of patch.split('\n')) {
-    const path = PATCH_FILE.exec(line)?.[1];
+    const path = PATCH_FILE.exec(line)?.[1]!.trimEnd();
     if (path !== undefined && !paths.includes(path)) paths.push(path);
   }
   return paths;
@@ -420,8 +422,11 @@ export function parseCopilotHook(raw: string): HookRequest | { readonly error: s
   return { ...request, paths };
 }
 
+/** What an answer to Codex or Copilot reads of a decision: its verdict, its message and its next step. */
+export type Held = Pick<Decision, 'verdict' | 'message' | 'hint'>;
+
 /** The decisions that hold a write, the refusals before the questions, or `null` where none does. */
-function holding(decisions: readonly Decision[]): { readonly verdict: 'deny' | 'ask'; readonly list: readonly Decision[] } | null {
+function holding(decisions: readonly Held[]): { readonly verdict: 'deny' | 'ask'; readonly list: readonly Held[] } | null {
   const denied = decisions.filter((decision) => decision.verdict === 'deny');
   if (denied.length > 0) return { verdict: 'deny', list: denied };
   const asked = decisions.filter((decision) => decision.verdict === 'ask');
@@ -441,7 +446,7 @@ const NO_ASKING = 'spec-harness: this write is the person\'s to decide, and Code
  * which Codex reads (its hooks reference), with a reason, without which
  * Codex counts the hook as failed and runs the tool; or nothing. Exit 0.
  */
-export function codexResponse(decisions: readonly Decision[]): HookResponse {
+export function codexResponse(decisions: readonly Held[]): HookResponse {
   const held = holding(decisions);
   if (held === null) return NONE;
   const reason = held.verdict === 'ask' ? `${NO_ASKING}\n${reasonOf(held.list)}` : reasonOf(held.list);
@@ -455,7 +460,7 @@ export function codexResponse(decisions: readonly Decision[]): HookResponse {
  * `ask` as a refusal, and its CLI asks the person. Exit 0: a hook that
  * exits otherwise is one Copilot counts as failed, and its reason is lost.
  */
-export function copilotResponse(decisions: readonly Decision[]): HookResponse {
+export function copilotResponse(decisions: readonly Held[]): HookResponse {
   const held = holding(decisions);
   if (held === null) return NONE;
   return { stdout: `${JSON.stringify({ permissionDecision: held.verdict, permissionDecisionReason: reasonOf(held.list) })}\n`, exitCode: 0 };
@@ -470,8 +475,8 @@ export function copilotResponse(decisions: readonly Decision[]): HookResponse {
  * (ADR-0012).
  */
 export function heldResponse(agent: Agent, why: string, next = 'run spec-harness doctor, and fix what it says'): HookResponse {
-  const decision: Decision = { path: '', verdict: 'deny', reason: 'held', because: [], message: why, hint: next };
-  return agent === 'codex' ? codexResponse([decision]) : copilotResponse([decision]);
+  const held: Held = { verdict: 'deny', message: why, hint: next };
+  return agent === 'codex' ? codexResponse([held]) : copilotResponse([held]);
 }
 
 /**

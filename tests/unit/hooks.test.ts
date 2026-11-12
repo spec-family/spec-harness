@@ -167,6 +167,8 @@ describe('a patch in the form apply_patch takes', () => {
     expect(patchPaths('*** Begin Patch\r\n*** Update File: a.ts\r\n*** End Patch\r\n')).toEqual(['a.ts']);
     expect(patchPaths('no patch here')).toEqual([]);
     expect(patchPaths('*** Add File:   ')).toEqual([]);
+    // A name straight after the colon, and a name of one character.
+    expect(patchPaths(['*** Update File:x.ts', '*** Add File: a'].join('\n'))).toEqual(['x.ts', 'a']);
   });
 });
 
@@ -177,6 +179,13 @@ describe("Codex's question (ADR-0012)", () => {
   it('reads the files apply_patch writes from the patch it carries, and from a shell command that hands it one', () => {
     expect(parseCodexHook(codex({ tool_name: 'apply_patch', tool_input: { command: patch } }))).toEqual({ event: 'PreToolUse', tool: 'apply_patch', cwd: '/repo', paths: ['src/db/schema.ts'], session: 's', call: 'call_1' });
     expect(parseCodexHook(codex({ tool_name: 'Bash', tool_input: { command: `apply_patch <<'EOF'\n${patch}EOF` } }))).toMatchObject({ tool: 'Bash', paths: ['src/db/schema.ts'] });
+    // apply_patch's command is its patch, with the line that opens it or without.
+    expect(parseCodexHook(codex({ tool_name: 'apply_patch', tool_input: { command: '*** Update File: a.ts' } }))).toMatchObject({ tool: 'apply_patch', paths: ['a.ts'] });
+  });
+
+  it('reads past a byte-order mark, and a tool with no tool_input as one that writes no file', () => {
+    expect(parseCodexHook(`${String.fromCharCode(0xfeff)}${codex({ tool_name: 'apply_patch', tool_input: { command: patch } })}`)).toMatchObject({ tool: 'apply_patch', paths: ['src/db/schema.ts'] });
+    expect(parseCodexHook(codex({ tool_name: 'Bash' }))).toMatchObject({ tool: 'Bash', paths: [] });
   });
 
   it('reads a shell command with no patch as writing no file, and a writing tool of Claude Code\'s as hook claude does', () => {
@@ -199,8 +208,16 @@ describe("Copilot's question (ADR-0012)", () => {
   it('reads a writing tool\'s file from its arguments, given as a JSON string or as an object', () => {
     expect(COPILOT_WRITING_TOOLS).toEqual(['create', 'edit', 'str_replace_editor', 'apply_patch']);
     expect(parseCopilotHook(copilot({ toolName: 'edit', toolArgs: JSON.stringify({ path: 'src/a.ts', old_str: 'a', new_str: 'b' }) }))).toEqual({ event: 'PreToolUse', tool: 'edit', cwd: '/repo', paths: ['src/a.ts'], session: 'c1', call: null });
-    expect(parseCopilotHook(copilot({ toolName: 'create', toolArgs: { file_path: 'b.ts', filePath: 'c.ts', filename: 'b.ts', file: 'd.ts' } }))).toMatchObject({ paths: ['b.ts', 'c.ts', 'd.ts'] });
+    // Each field once, in the order they are read, an empty one not at all.
+    expect(parseCopilotHook(copilot({ toolName: 'create', toolArgs: { file_path: 'b.ts', filePath: 'c.ts', filename: 'e.ts', file: 'b.ts', path: '' } }))).toMatchObject({ paths: ['b.ts', 'c.ts', 'e.ts'] });
     expect(parseCopilotHook(copilot({ toolName: 'apply_patch', toolArgs: { input: '*** Begin Patch\n*** Add File: e.ts\n+x\n*** End Patch' } }))).toMatchObject({ paths: ['e.ts'] });
+    // A file a field and the patch both name is read once; an argument that is no text, or no patch, names none.
+    expect(parseCopilotHook(copilot({ toolName: 'apply_patch', toolArgs: { path: 'e.ts', lines: 3, note: 'no patch', input: '*** Begin Patch\n*** Add File: e.ts\n*** Add File: f.ts\n*** End Patch' } }))).toMatchObject({ paths: ['e.ts', 'f.ts'] });
+  });
+
+  it('reads past a byte-order mark, and a cwd or a session that is no string as none', () => {
+    expect(parseCopilotHook(`${String.fromCharCode(0xfeff)}${copilot({ toolName: 'edit', toolArgs: { path: 'a.ts' } })}`)).toMatchObject({ tool: 'edit', paths: ['a.ts'] });
+    expect(parseCopilotHook(JSON.stringify({ sessionId: 7, cwd: 3, toolName: 'edit', toolArgs: { path: 'a.ts' } }))).toEqual({ event: 'PreToolUse', tool: 'edit', cwd: null, paths: ['a.ts'], session: null, call: null });
   });
 
   it('reads any other tool as writing no file, and the form Claude Code\'s hooks have as hook claude reads it', () => {
@@ -210,7 +227,7 @@ describe("Copilot's question (ADR-0012)", () => {
 
   it('says what it cannot read', () => {
     expect(parseCopilotHook('{')).toEqual({ error: 'the hook input is not JSON' });
-    expect(parseCopilotHook('[]')).toEqual({ error: 'the hook input is not a JSON object' });
+    for (const text of ['[]', 'null', '7']) expect(parseCopilotHook(text), text).toEqual({ error: 'the hook input is not a JSON object' });
     expect(parseCopilotHook(copilot({ toolName: 3 }))).toEqual({ error: 'the hook input names no tool' });
     expect(parseCopilotHook(copilot({ toolName: 'edit', toolArgs: '{path' }))).toEqual({ error: 'the hook input names edit with arguments that are not JSON' });
     expect(parseCopilotHook(copilot({ toolName: 'edit', toolArgs: { old_str: 'a' } }))).toEqual({ error: 'the hook input names edit and no file it writes' });

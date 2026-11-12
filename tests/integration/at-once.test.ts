@@ -265,6 +265,19 @@ describe('audit', () => {
   });
 });
 
+describe('hook codex and hook copilot', () => {
+  it('ask git nothing for a question whose tool writes no file', async () => {
+    const repo = onBrief();
+    const codex = await cli(['hook', 'codex'], repo.root, { stdin: JSON.stringify({ hook_event_name: 'PreToolUse', cwd: repo.root, tool_name: 'Bash', tool_input: { command: 'ls' } }), env: {} });
+    const copilot = await cli(['hook', 'copilot'], repo.root, { stdin: JSON.stringify({ cwd: repo.root, toolName: 'bash', toolArgs: { command: 'ls' } }), env: {} });
+    expect([codex, copilot]).toEqual([
+      { code: 0, stdout: '', stderr: '' },
+      { code: 0, stdout: '', stderr: '' },
+    ]);
+    expect(seen.log).toEqual([]);
+  });
+});
+
 describe('init', () => {
   it("asks git at once for the remote's default branch, the local branches and where its hooks are", async () => {
     const repo = repository({ 'README.md': '# x\n' }, null);

@@ -61,7 +61,9 @@ describe('init', () => {
   });
 
   it("writes Codex's and Copilot's hooks where the repository keeps their directories, and nothing for either where it does not (ADR-0012)", async () => {
+    // A .github with no hooks directory in it is not where Copilot reads hooks.
     const without = installed();
+    mkdirSync(join(without.root, '.github', 'workflows'), { recursive: true });
     const plain = await cli(['init', '--write'], without.root);
     expect(plain.stdout).not.toContain('.codex/hooks.json');
     expect(plain.stdout).not.toContain('.github/hooks');
@@ -82,6 +84,13 @@ describe('init', () => {
     const advised = await cli(['init'], repo.root);
     expect(advised.stdout).toContain(`advise  .codex/hooks.json\n        cannot be read as JSON; add ${JSON.stringify(CODEX_GROUP)} under "hooks"."PreToolUse" by hand\n`);
     expect(advised.stdout).toContain('advise  .github/hooks/spec-harness.json\n        holds what init did not write');
+    // Codex's file in a shape it does not read is left to the person; one it reads gains the guard's group.
+    writeFileSync(join(repo.root, '.codex', 'hooks.json'), '{"hooks":[]}\n');
+    expect((await cli(['init'], repo.root)).stdout).toContain(`advise  .codex/hooks.json\n        its "hooks" is not in the shape Codex reads; add ${JSON.stringify(CODEX_GROUP)} under "hooks"."PreToolUse" by hand\n`);
+    const stop = { hooks: [{ type: 'command', command: 'notify.sh' }] };
+    writeFileSync(join(repo.root, '.codex', 'hooks.json'), `${JSON.stringify({ hooks: { Stop: [stop] } })}\n`);
+    expect((await cli(['init', '--write'], repo.root)).stdout).toContain('update  .codex/hooks.json\n');
+    expect(JSON.parse(readFileSync(join(repo.root, '.codex', 'hooks.json'), 'utf8'))).toEqual({ hooks: { Stop: [stop], PreToolUse: [CODEX_GROUP] } });
   });
 
   it('applies the plan with --write, and a second run changes nothing', async () => {

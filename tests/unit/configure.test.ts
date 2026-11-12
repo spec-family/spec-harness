@@ -328,6 +328,9 @@ describe('the MCP server registration', () => {
     expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'node ./node_modules/.bin/spec-harness hook codex' }] }] } })).toBeNull();
     expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: 'x' }, { hooks: [{ command: 3 }] }] } })).toEqual({ hooks: { PreToolUse: [{ hooks: 'x' }, { hooks: [{ command: 3 }] }, CODEX_GROUP] } });
     expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: [{ command: 'spec-harness hook claude' }] }] } })).not.toBeNull();
+    // Another tool's hook codex is not the guard; the guard's beside another's in one group is.
+    expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: [{ command: 'other-guard hook codex' }] }] } })).not.toBeNull();
+    expect(mergeCodexHooks({ hooks: { PreToolUse: [{ hooks: [{ command: 'audit.sh' }, ...(CODEX_GROUP['hooks'] as readonly unknown[])] }] } })).toBeNull();
     expect(mergeCodexHooks({ hooks: [] })).toBe('unread');
     expect(mergeCodexHooks({ hooks: { PreToolUse: {} } })).toBe('unread');
   });

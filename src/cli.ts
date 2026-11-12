@@ -499,9 +499,12 @@ function hookCommand(options: Options, io: CliIO): Promise<number> {
   return kind === 'claude' ? withBudget(HOOK_BUDGET_MS, () => answerHook(options, io)) : answerHook(options, io);
 }
 
-/** A sentence of the hook's, as the next step a decision gives: its first letter low, and no full stop. */
+/**
+ * A sentence of the hook's, as the next step a decision gives: its first
+ * letter low, and its full stop, which each of them ends with, dropped.
+ */
 function asHint(sentence: string): string {
-  return `${sentence.charAt(0).toLowerCase()}${sentence.slice(1).replace(/\.$/, '')}`;
+  return `${sentence.charAt(0).toLowerCase()}${sentence.slice(1, -1)}`;
 }
 
 /**
@@ -533,11 +536,16 @@ async function answerAgent(agent: Agent, options: Options, io: CliIO): Promise<n
     // A directory in no work tree has nothing to guard, as for hook claude.
     if (error instanceof UsageError) return EXIT_OK;
     // The one write a configuration that does not load lets through is to
-    // the file itself, as for hook claude (ADR-0005).
+    // the file itself, as for hook claude (ADR-0005). The configuration is
+    // read from a file here, so the test of `file` is the compiler's, and
+    // its mutant is equivalent, as for hook claude.
     if (error instanceof ConfigError && error.file !== null && writesOnly(request.paths, error.file, cwd)) return EXIT_OK;
     return answer(io, heldResponse(agent, `cannot check this write: ${(error as Error).message}`));
   }
   try {
+    // The answer reads a decision by its verdict, which a mutant's text
+    // put first on this list has none of: that mutant is equivalent, as for
+    // hook claude.
     const decisions: Decision[] = [];
     for (const part of await writesBy(workspace, request.cwd, request.paths, io)) {
       const decided = await decisionsFor(part.workspace, options, io, part.paths, cwd);
