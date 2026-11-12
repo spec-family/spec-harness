@@ -119,6 +119,8 @@ Options:
   --strict            Warnings fail the run. For guard, audit, premises and doctor.
   --if-round          Where nothing names a brief, say there is no round and exit 0,
                       not 2. For audit.
+  --require-measured  Fail where the round could not be measured, or its base and allowed
+                      signers were read from what the round can change. For audit.
   --block-on-failure  onFailure "block" on init's entries but the one as a turn ends. For init.
   --help, --version   One of the two: both on one line are refused.
 
@@ -622,14 +624,17 @@ async function baseAndSigners(
   workspace: Workspace,
   flag: string | undefined,
   signersFile: string,
-): Promise<{ readonly base: Base; readonly signersText: string | null }> {
+): Promise<{ readonly base: Base; readonly signersFile: string; readonly signersText: string | null }> {
   // Nothing in doctor asks what kind a base is but whether it is resolved, so
   // the mutant that names this one otherwise is equivalent.
   const base: Base = flag !== undefined && isBlank(flag) ? { kind: 'unresolved', reason: emptyValue('--base', 'base', flag) } : await resolveBase(workspace, flag);
   // An unresolved base has no commit: git shows nothing for one, so asking
   // anyway reads as no file, and that mutant is equivalent.
-  const signersText = base.kind === 'resolved' ? await show(base.sha, signersFile, workspace.root) : null;
-  return { base, signersText };
+  // The file is the one the configuration the round is measured by names,
+  // as rulings reads it; with no base, the work tree's is said.
+  const file = base.kind === 'resolved' ? base.signers : signersFile;
+  const signersText = base.kind === 'resolved' ? await show(base.sha, file, workspace.root) : null;
+  return { base, signersFile: file, signersText };
 }
 
 /**
@@ -691,7 +696,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
     const named = `${command} (named in .spec-harness.json; its version is not checked)`;
     return { ...row, version: null, elsewhere, detail: earlier === null ? named : `${named}; ${earlier.detail}` };
   });
-  const signersFile = workspace.config.rulings.allowedSigners;
+  const configuredSigners = workspace.config.rulings.allowedSigners;
   // Five things that wait on the work tree and on nothing of one another,
   // each a process or a chain of them. Asked one after another, Claude
   // Code's release, the longest wait of a doctor on Windows, was asked for
@@ -707,7 +712,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   const main = mainWorkTree(workspace.commonDir);
   const [briefAsked, baseAsked, pluginAsked, claudeAsked, hookAsked] = await Promise.allSettled([
     diagnoseBrief(workspace, options, io.env),
-    baseAndSigners(round, workspace, options.base, signersFile),
+    baseAndSigners(round, workspace, options.base, configuredSigners),
     specBriefPlugin(workspace.root),
     wiringAndRelease(round, workspace.root, io, main === null ? [workspace.root] : [workspace.root, main]),
     gitHook(workspace.root),
@@ -715,7 +720,7 @@ async function doctorCommand(options: Options, io: CliIO): Promise<number> {
   const named = answerOf(briefAsked);
   // A ruling counts only by a signature checked against the allowed signers
   // on the base, and only once spec-brief's archive asks the plugin about it.
-  const { base, signersText } = answerOf(baseAsked);
+  const { base, signersFile, signersText } = answerOf(baseAsked);
   // A branch that names a brief spec-brief has archived holds every write,
   // and fails doctor, but for the branch that archived it: the last commit
   // of every round, whose own CI run must not fail for it. git tells the

@@ -218,6 +218,65 @@ describe('audit of a round', () => {
     expect(report.dependencies).toEqual([]);
   });
 
+  it('measures the round from the base the merge base configures, where the work tree names another, and says so (ADR-0006)', async () => {
+    const r = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }), 'src/a.ts': 'a\n' });
+    // A branch of the agent's own, from the base, holding what the round
+    // would be measured against there.
+    r.git('checkout', '-q', '-b', 'evil');
+    r.write('src/a.ts', 'b\n');
+    r.commit('the round, already on the base it names');
+    r.git('checkout', '-q', '-b', 'brief/001-x', 'main');
+    r.write('src/a.ts', 'b\n');
+    r.write('.spec-harness.json', `${JSON.stringify({ base: 'evil', tools: siblings(), rulings: { allowedSigners: 'signers' } }, null, 2)}\n`);
+    r.commit('the round, which names its own base and signers');
+    const report = parsed<Report>(await cli(['audit', '--format', 'json'], r.root));
+    const at = `the merge base with evil, ${r.git('merge-base', 'main', 'HEAD').slice(0, 12)}`;
+    expect(report.base).toMatchObject({ ref: 'main' });
+    expect(report.findings.filter((f) => f.rule === 'harness-config-changed').map((f) => [f.severity, f.message])).toEqual([
+      ['warning', `the work tree's .spec-harness.json measures the round from evil, where ${at} has main: the round is measured from main`],
+      ['warning', `the work tree's .spec-harness.json reads the allowed signers from signers, where ${at} has .github/allowed_signers: rulings are verified against .github/allowed_signers`],
+    ]);
+    // Measured from evil, the round would have been nothing to measure.
+    expect(report.findings.some((f) => f.rule === 'unmeasured')).toBe(false);
+  });
+
+  it('reads the configuration on the remote\'s default branch where git records one, and calls a base that names its commit no change', async () => {
+    const r = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }), 'src/a.ts': 'a\n' }, { base: null });
+    r.git('update-ref', 'refs/remotes/origin/main', 'main');
+    r.git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
+    r.git('checkout', '-q', '-b', 'brief/001-x');
+    r.write('src/a.ts', 'b\n');
+    r.write('.spec-harness.json', `${JSON.stringify({ base: 'main', tools: siblings() }, null, 2)}\n`);
+    r.commit('the round');
+    const same = parsed<Report>(await cli(['audit', '--format', 'json'], r.root));
+    expect(same.base).toMatchObject({ ref: 'origin/main' });
+    expect(same.findings.filter((f) => f.rule === 'harness-config-changed')).toEqual([]);
+    r.write('.spec-harness.json', `${JSON.stringify({ base: 'brief/001-x', tools: siblings() }, null, 2)}\n`);
+    const changed = parsed<Report>(await cli(['audit', '--format', 'json'], r.root));
+    expect(changed.base).toMatchObject({ ref: 'origin/main' });
+    expect(changed.findings.filter((f) => f.rule === 'harness-config-changed').map((f) => f.message)).toEqual([
+      "the work tree's .spec-harness.json measures the round from brief/001-x, where origin/main has origin/main: the round is measured from origin/main",
+    ]);
+  });
+
+  it('fails a run measured by what the round can change, or not measured, under --require-measured', async () => {
+    const r = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'] }), 'src/a.ts': 'a\n' });
+    r.git('checkout', '-q', '-b', 'brief/001-x');
+    r.write('src/a.ts', 'b\n');
+    r.commit('the round');
+    expect((await cli(['audit', '--format', 'json'], r.root)).code).toBe(0);
+    const unanchored = await cli(['audit', '--require-measured', '--format', 'json'], r.root);
+    expect(unanchored.code).toBe(1);
+    const report = parsed<Report>(unanchored);
+    expect(report.ok).toBe(false);
+    expect(report.findings.filter((f) => f.severity === 'error').map((f) => f.rule)).toEqual(['harness-config-unanchored']);
+    const named = await cli(['audit', '--require-measured', '--base', 'main', '--format', 'json'], r.root);
+    expect([named.code, parsed<Report>(named).findings.filter((f) => f.severity === 'error')]).toEqual([0, []]);
+    const nothing = await cli(['audit', '--require-measured', '--base', 'HEAD', '--format', 'json'], r.root);
+    expect(nothing.code).toBe(1);
+    expect(parsed<Report>(nothing).findings.find((f) => f.rule === 'unmeasured')?.severity).toBe('error');
+  });
+
   it('runs the goals of a brief whatever its status, as spec-guard runs them only when told to ignore it', async () => {
     const r = repository({ [BRIEF_FILE]: brief({ status: 'draft', affected: ['src/**'], body: '## Goals\n\n<!-- @assert-absence target="src" symbol="OldToken" -->\n' }), 'src/a.ts': 'OldToken\n' });
     const report = parsed<Report & { measured: { goals: unknown } }>(await cli(['audit', '1', '--format', 'json'], r.root));

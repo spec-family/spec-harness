@@ -166,6 +166,35 @@ on PATH, which git finds by its name, and the host the check runs on. A
 check in a fresh checkout in CI, where the agent had no shell, trusts no
 configuration the round wrote.
 
+*Amended 2026-11-12.* **The round does not choose its base or its signers.**
+The decision says the round's tree cannot add a signer, and it could: the
+base, and the name of the allowed-signers file, were read from the work
+tree's `.spec-harness.json`, which the round edits. A round that set
+`"base"` to a branch of the agent's own, listing the agent's key, had its
+rulings count, and one that set it to its own branch had its audit pass
+with two warnings, nothing measured (round 29's evaluation).
+
+Both are now read from the configuration on a ref the round cannot move
+from its branch: the commit `--base` names; else the remote's default
+branch, where git records one, whose `.spec-harness.json` names the base,
+or is the base where it names none; else the merge base of HEAD with the
+base the work tree names, read again there. The last is weaker: a round
+that begins the branch it names has its own commit as that merge base. A
+fresh CI checkout records no default branch, so the README's CI job passes
+`--base` from the forge's own variables.
+
+- A signer counts where the file lists it both on the base and at the merge
+  base of HEAD with it: added on the base while the round ran, it counts
+  once the round begins after it.
+- Where the work tree names another base, one that names another commit,
+  or another file, `audit` reports `harness-config-changed`, a warning
+  under the D4 freeze (round 29's D1); the round is measured by the
+  anchored configuration whatever the finding's severity.
+- `audit --require-measured` fails a run whose base was read at the merge
+  base (`harness-config-unanchored`), and makes `unmeasured` and
+  `archive/scope-unmeasured` errors. Opt-in now; the default after the
+  freeze, announced a minor ahead.
+
 ## Consequences
 
 No new format, service or network: git, OpenSSH 8.1 or later (2019), and an

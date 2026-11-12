@@ -442,6 +442,51 @@ describe.skipIf(!hasSshKeygen())('a ruling is a row whose commit a person signed
     expect(await decision(other, 'src/db/schema.ts')).toMatchObject({ reason: 'protected' });
   });
 
+  it('counts no signer of a base the work tree names, where the remote\'s default branch configures another (ADR-0006)', async () => {
+    const agent = signingKey(temp(), 'agent@example.com');
+    const other = round({ '.github/allowed_signers': signers });
+    other.git('update-ref', 'refs/remotes/origin/main', 'main');
+    other.git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
+    // The agent's branch, from the base, lists the agent as a signer.
+    other.git('checkout', '-q', '-b', 'evil', 'main');
+    other.write('.github/allowed_signers', agent.signers);
+    other.commit('the agent signs');
+    other.git('checkout', '-q', 'brief/001-rotate');
+    other.write('.spec-harness.json', `${JSON.stringify({ base: 'evil', tools: siblings() }, null, 2)}\n`);
+    await cli(['escalate', '--path', 'src/db/schema.ts', '--reason', 'r'], other.root);
+    await cli(['rule', 'E-001-1', '--allow', '--note', 'n'], other.root);
+    commitSigned(other, agent.key, 'ruling, signed by the agent');
+    const state = await rulings(other);
+    expect(state.verified).toEqual([]);
+    expect(await decision(other, 'src/db/schema.ts')).toMatchObject({ verdict: 'deny', reason: 'protected' });
+    const audit = parsed<{ findings: Finding[] }>(await cli(['audit', '--format', 'json'], other.root));
+    expect(audit.findings.find((f) => f.rule === 'harness-config-changed')?.message).toBe(
+      "the work tree's .spec-harness.json measures the round from evil, where origin/main has main: the round is measured from main",
+    );
+  });
+
+  it('counts a signer the base lists only where the merge base listed it too', async () => {
+    const keys = temp();
+    const first = signingKey(keys, 'first@example.com');
+    const later = signingKey(temp(), 'later@example.com');
+    const other = round({ '.github/allowed_signers': first.signers });
+    // A signer added to the base while the round ran.
+    other.git('checkout', '-q', 'main');
+    other.write('.github/allowed_signers', `${first.signers}${later.signers}`);
+    other.commit('a second signer');
+    other.git('checkout', '-q', 'brief/001-rotate');
+    await cli(['escalate', '--path', 'src/db/schema.ts', '--reason', 'r'], other.root);
+    await cli(['rule', 'E-001-1', '--allow', '--note', 'n'], other.root);
+    const commit = commitSigned(other, later.key, 'ruling, signed by the later signer');
+    const state = await rulings(other);
+    expect(state.verified).toEqual([]);
+    expect(state.unverified[0]?.reason.startsWith(`commit ${commit.slice(0, 12)} last changed its row, and `)).toBe(true);
+    // The one the merge base listed too counts, on the same branch.
+    other.write(BRIEF_FILE, other.read(BRIEF_FILE).replace('| n |', '| n, signed by the first |'));
+    commitSigned(other, first.key, 'ruling, signed by the first signer');
+    expect((await rulings(other)).verified.map((r) => r.signer)).toEqual(['first@example.com']);
+  });
+
   it('does not count a good signature by a key the base branch does not list', async () => {
     const keys = temp();
     const listed = signingKey(keys, 'person@example.com');

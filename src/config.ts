@@ -145,6 +145,22 @@ function nonEmpty(value: unknown, where: string): string {
   return value;
 }
 
+/**
+ * A configuration from its file's text. A byte order mark before the JSON
+ * is read past, as spec-brief and spec-graph read past it in theirs:
+ * Windows editors write one, and refused, it held every write the hook
+ * decided for a file that read as JSON to its author (ADR-0005).
+ */
+export function configFromText(text: string, file = CONFIG_FILE): HarnessConfig {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+  } catch (error) {
+    throw new ConfigError(`${file} is not valid JSON: ${(error as Error).message}`);
+  }
+  return parseConfig(raw, file);
+}
+
 /** Validates a parsed configuration and fills in every default. */
 export function parseConfig(raw: unknown, file = CONFIG_FILE): HarnessConfig {
   if (!isObject(raw)) throw new ConfigError(`${file} must hold a JSON object`);

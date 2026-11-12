@@ -9,7 +9,7 @@ import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 
 import type { BriefInputs } from './briefs.js';
-import { ConfigError, CONFIG_FILE, DEFAULT_CONFIG, parseConfig, type HarnessConfig } from './config.js';
+import { ConfigError, CONFIG_FILE, DEFAULT_CONFIG, configFromText, type HarnessConfig } from './config.js';
 
 /** What stands at a path, links followed, or `null` where nothing does: a link to nothing is nothing. */
 function standing(path: string): Stats | null {
@@ -53,16 +53,10 @@ export async function loadConfig(root: string): Promise<{ config: HarnessConfig;
   } catch (error) {
     throw new ConfigError(`${CONFIG_FILE} cannot be read: ${(error as Error).message}`, file);
   }
-  let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    return { config: configFromText(text), file };
   } catch (error) {
-    throw new ConfigError(`${CONFIG_FILE} is not valid JSON: ${(error as Error).message}`, file);
-  }
-  try {
-    return { config: parseConfig(raw), file };
-  } catch (error) {
-    // parseConfig throws nothing but its own refusal, whose words are kept.
+    // configFromText throws nothing but its own refusal, whose words are kept.
     throw new ConfigError((error as Error).message, file);
   }
 }

@@ -134,7 +134,8 @@ const BRIEFS = 'list --archived --format json';
 const BASE = 'rev-parse --verify --quiet main^{commit}';
 const HEAD = 'rev-parse --verify --quiet HEAD^{commit}';
 const MERGE_BASE = 'merge-base';
-const SIGNERS = 'show ';
+const CONFIG = ':.spec-harness.json';
+const SIGNERS = ':.github/allowed_signers';
 const HOOKS = '--git-path hooks/pre-commit';
 const REMOTE = 'refs/remotes/origin/HEAD';
 const BRANCHES = 'for-each-ref';
@@ -171,9 +172,11 @@ describe('doctor', () => {
     expect(Math.max(when('answered', TREE), when('answered', BRANCH))).toBeLessThan(when('asked', BRIEFS));
     // Then the brief, the two commits of the base and git's hooks: none says anything another is asked with.
     expect(atOnce(BRIEFS, BASE, HEAD, HOOKS)).toBe(true);
-    // The commit the two share waits on both, and the signers' file on that.
+    // The commit the two share waits on both, the configuration the round
+    // is measured by on that, and the signers' file it names on that.
     expect(Math.max(when('answered', BASE), when('answered', HEAD))).toBeLessThan(when('asked', MERGE_BASE));
-    expect(when('answered', MERGE_BASE)).toBeLessThan(when('asked', SIGNERS));
+    expect(when('answered', MERGE_BASE)).toBeLessThan(when('asked', CONFIG));
+    expect(when('answered', CONFIG)).toBeLessThan(when('asked', SIGNERS));
   });
 
   it('asks Claude Code its release while git is still answering, and not at all where nothing wires it to the guard', async () => {
@@ -412,7 +415,8 @@ describe('the hook', () => {
     expect(when('answered', BRIEFS)).toBeLessThan(Math.min(when('asked', BASE), when('asked', HEAD)));
     expect(atOnce(BASE, HEAD)).toBe(true);
     expect(Math.max(when('answered', BASE), when('answered', HEAD))).toBeLessThan(when('asked', MERGE_BASE));
-    expect(when('answered', MERGE_BASE)).toBeLessThan(when('asked', SIGNERS));
+    expect(when('answered', MERGE_BASE)).toBeLessThan(when('asked', CONFIG));
+    expect(when('answered', CONFIG)).toBeLessThan(when('asked', SIGNERS));
   });
 
   it('starts three processes for a write no brief protects, and one in a directory that is in no work tree', async () => {

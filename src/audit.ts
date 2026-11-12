@@ -55,10 +55,31 @@ export interface ArchiveReason extends Finding {
   readonly path?: string | undefined;
 }
 
+/**
+ * A key of the harness's configuration that the work tree's file sets to
+ * one value and the configuration the round is measured by to another: in
+ * words, each value as a person reads it, and where the second was read.
+ */
+export interface ConfigChange {
+  readonly key: 'base' | 'rulings.allowedSigners';
+  readonly workTree: string;
+  readonly measured: string;
+  readonly at: string;
+}
+
 export interface AuditInput {
   readonly brief: BriefRow;
   /** Why the round's changes could not be measured, when they could not. */
   readonly unmeasured: string | null;
+  /** What the work tree's configuration says other than the one the round is measured by; none when not given. */
+  readonly configChanges?: readonly ConfigChange[] | undefined;
+  /**
+   * Given where `--require-measured` is: a run that could not measure the
+   * round fails. `unanchored` names where the base and the allowed signers
+   * were read from where that is a place the round can change, and is
+   * `null` where it is a ref the round cannot move.
+   */
+  readonly requireMeasured?: { readonly unanchored: string | null } | undefined;
   readonly dependencies: {
     readonly changes: readonly DependencyChange[];
     /** The entries of an install-script policy the round added, removed or turned; none when not given. */
@@ -124,6 +145,8 @@ export interface AuditReport {
  */
 export const RULES: Readonly<Record<string, string>> = {
   unmeasured: "The round's changes could not be measured from a base.",
+  'harness-config-changed': "The work tree's .spec-harness.json changes the base or the allowed signers the round is measured by.",
+  'harness-config-unanchored': 'The base and the allowed signers were read from a place the round can change, where --require-measured asks for a ref it cannot.',
   'archive-unchecked': "spec-brief's archive could not be asked what it would refuse.",
   'assertions-unchecked': "The brief's assertions could not be run.",
   'assertion-unreadable': 'An assertion in the brief spec-guard cannot read, so nothing it states was run.',
@@ -145,6 +168,16 @@ export const RULES: Readonly<Record<string, string>> = {
   'install-script-denied': 'A package the round denied its install scripts.',
   'install-script-entry-removed': "An entry the round removed from a manifest's install-script policy.",
 };
+
+/**
+ * The rules that say a part of the round was not measured, which
+ * `--require-measured` fails: the round's changes, and the scope
+ * spec-brief's archive could not check.
+ */
+const MEASURING: readonly string[] = ['unmeasured', 'archive/scope-unmeasured'];
+
+/** The severity of what fails a run. */
+const FAILS: Severity = 'error';
 
 function finding(rule: string, severity: Severity, message: string, hint: string, file?: string, line?: number, subject?: string): Finding {
   return {
@@ -254,6 +287,26 @@ export function audit(input: AuditInput): AuditReport {
         `the round's changes were not measured: ${input.unmeasured}`,
         'pass --base <ref>, set "base" in .spec-harness.json, or audit on the round\'s branch before it merges',
         brief.file,
+      ),
+    );
+  }
+
+  for (const change of input.configChanges ?? []) {
+    const said =
+      change.key === 'base'
+        ? `the work tree's ${CONFIG_FILE} measures the round from ${change.workTree}, where ${change.at} has ${change.measured}: the round is measured from ${change.measured}`
+        : `the work tree's ${CONFIG_FILE} reads the allowed signers from ${change.workTree}, where ${change.at} has ${change.measured}: rulings are verified against ${change.measured}`;
+    out.push(finding('harness-config-changed', 'warning', said, `a change to "${change.key}" counts once it is on the base: merge it there first, or take it out of the round`, CONFIG_FILE, undefined, change.key));
+  }
+
+  if (input.requireMeasured !== undefined && input.requireMeasured.unanchored !== null) {
+    out.push(
+      finding(
+        'harness-config-unanchored',
+        FAILS,
+        `the round's base and allowed signers were read from ${input.requireMeasured.unanchored}, which the round can change`,
+        "pass --base naming the branch rounds merge into as the forge has it, such as --base origin/main, or record the remote's default branch: git remote set-head origin --auto",
+        CONFIG_FILE,
       ),
     );
   }
@@ -454,6 +507,8 @@ export function audit(input: AuditInput): AuditReport {
     }
   }
 
+  // What could not be measured fails a run that requires it measured.
+  const findings = input.requireMeasured === undefined ? out : out.map((found) => (MEASURING.includes(found.rule) ? { ...found, severity: FAILS } : found));
   const measured: Measured = {
     changes: input.unmeasured === null ? 'measured' : 'unmeasured',
     archive: 'unavailable' in input.archive ? 'unavailable' : 'asked',
@@ -465,7 +520,7 @@ export function audit(input: AuditInput): AuditReport {
     dependencies: { changed: input.dependencies.changes.length, unread: input.dependencies.unread.length },
     installScripts: { changed: installScripts.length },
   };
-  return { findings: out, counts: tally(out), measured };
+  return { findings, counts: tally(findings), measured };
 }
 
 /** How many findings of each severity. */

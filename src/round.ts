@@ -17,8 +17,9 @@ import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readArchivePlan, readGuardRun } from './answers.js';
-import type { ArchiveReason, AssertionOutcome, AuditInput, AuditReport, UnreadableAssertion } from './audit.js';
+import type { ArchiveReason, AssertionOutcome, AuditInput, AuditReport, ConfigChange, UnreadableAssertion } from './audit.js';
 import { SiblingOutputError } from './briefs.js';
+import { CONFIG_FILE, configFromText, DEFAULT_CONFIG, type HarnessConfig } from './config.js';
 import { sameId } from './branch.js';
 import {
   arrayMatcher,
@@ -81,33 +82,144 @@ import { activeBrief, describeActive, namedId, openWorkspace, parseOptions, Usag
 
 /* -------------------------------------------------------------------- base */
 
+/**
+ * Where the harness's own configuration, the base and the allowed-signers
+ * file it names, was read for a round: from the commit `--base` names,
+ * from the remote's default branch, or, with neither, from the merge base
+ * of HEAD and the base the work tree names. The first two are refs the
+ * round cannot move from its own branch; the third is a commit before the
+ * round's own where the round's history begins at the base, and the
+ * round's own commit where it began the base itself (ADR-0006).
+ */
+export type Anchor = 'flag' | 'remote' | 'merge-base';
+
 export type Base =
-  | { readonly kind: 'resolved'; readonly ref: string; readonly source: BaseSource; readonly sha: string; readonly mergeBase: string; readonly head: string }
+  | {
+      readonly kind: 'resolved';
+      readonly ref: string;
+      readonly source: BaseSource;
+      readonly sha: string;
+      readonly mergeBase: string;
+      readonly head: string;
+      readonly anchor: Anchor;
+      /** The allowed-signers file, as the configuration the round is measured by names it. */
+      readonly signers: string;
+      /** What the work tree's configuration says other than that one. */
+      readonly changes: readonly ConfigChange[];
+    }
   | { readonly kind: 'unresolved'; readonly reason: string };
 
-/** What the round is measured from: the flag, the configuration, then the remote's default branch. */
-export async function resolveBase(workspace: Workspace, flag: string | undefined): Promise<Base> {
-  const source: BaseSource = flag !== undefined ? 'flag' : workspace.config.base !== null ? 'config' : 'remote';
-  const ref = flag ?? workspace.config.base ?? (await remoteDefault(workspace.root));
-  if (ref === null) {
-    return { kind: 'unresolved', reason: 'no base is named and the remote has no default branch; pass --base <ref> or set "base"' };
-  }
-  // Neither commit waits on the other, so git is asked for both at once, and
-  // they are read in the order they were asked in before: a base that names
-  // no commit is said before a HEAD that names none.
-  const [named, head] = await Promise.all([revision(ref, workspace.root), revision('HEAD', workspace.root)]);
-  // The configured base is a branch's name, and a CI checkout fetches the
+/** A commit a ref names, as typed; or a branch a configuration names, as the remote's where it names no commit here. */
+async function commitOf(ref: string, configured: boolean, root: string): Promise<{ readonly ref: string; readonly sha: string } | { readonly reason: string }> {
+  const named = await revision(ref, root);
+  if (named !== null) return { ref, sha: named };
+  // A configured base is a branch's name, and a CI checkout fetches the
   // branch as the remote's alone, origin/main with no main: where the name
   // reads as no commit here, the remote's branch of that name is the base,
   // spelled as git reads it whatever a branch or a tag is called (git.ts,
   // remoteDefault). A base given on the command line is read as typed.
-  const remote = named === null && source === 'config' ? `remotes/origin/${ref}` : null;
-  const sha = remote === null ? named : await revision(remote, workspace.root);
-  if (sha === null) return { kind: 'unresolved', reason: `"${ref}" names no commit${remote === null ? '' : `, and neither does ${remote}`}` };
-  if (head === null) return { kind: 'unresolved', reason: 'HEAD names no commit: nothing is committed on this branch yet' };
-  const common = await mergeBase(sha, head, workspace.root);
-  if (common === null) return { kind: 'unresolved', reason: `"${ref}" and HEAD share no history` };
-  return { kind: 'resolved', ref: remote ?? ref, source, sha, mergeBase: common, head };
+  if (!configured) return { reason: `"${ref}" names no commit` };
+  const remote = `remotes/origin/${ref}`;
+  const sha = await revision(remote, root);
+  return sha === null ? { reason: `"${ref}" names no commit, and neither does ${remote}` } : { ref: remote, sha };
+}
+
+/**
+ * The harness's configuration as a commit holds it: the defaults where it
+ * holds no `.spec-harness.json`, and a refusal in words where what it holds
+ * does not load.
+ */
+async function configAt(sha: string, root: string): Promise<HarnessConfig | { readonly reason: string }> {
+  const text = await show(sha, CONFIG_FILE, root);
+  if (text === null) return DEFAULT_CONFIG;
+  try {
+    return configFromText(text);
+  } catch (error) {
+    // configFromText throws nothing but its own refusal.
+    return { reason: (error as Error).message };
+  }
+}
+
+/**
+ * What the round is measured from, and the configuration it is measured
+ * by. The work tree's `.spec-harness.json` is the round's to edit, so it
+ * does not choose the base or the allowed signers that vouch for the
+ * round (ADR-0006): those are read from the configuration on the commit
+ * `--base` names, on the remote's default branch, or at the merge base of
+ * HEAD with the base the work tree names; and where the work tree says
+ * otherwise, that is a change the audit reports.
+ */
+export async function resolveBase(workspace: Workspace, flag: string | undefined): Promise<Base> {
+  const { root } = workspace;
+  const unresolved = (reason: string): Base => ({ kind: 'unresolved', reason });
+  const named = flag ?? workspace.config.base;
+  // None of the three waits on another, so git is asked for them at once,
+  // and what fails is said in the order it was before: a base that names
+  // no commit before a HEAD that names none.
+  const [remote, head, first] = await Promise.all([
+    flag === undefined ? remoteDefault(root) : null,
+    revision('HEAD', root),
+    named === null ? null : commitOf(named, flag === undefined, root),
+  ]);
+  const noHead = 'HEAD names no commit: nothing is committed on this branch yet';
+  let anchor: Anchor;
+  let at: string;
+  let found: { readonly ref: string; readonly sha: string } | { readonly reason: string } | null;
+  let source: BaseSource;
+  let measured: HarnessConfig | { readonly reason: string };
+  /** The merge base found on the way, where it is the base's. */
+  let common: string | null = null;
+  /** The commit the work tree's base names, as it would have been read: `null` where it names none. */
+  let own: string | null;
+  if (flag !== undefined || remote !== null) {
+    anchor = flag === undefined ? 'remote' : 'flag';
+    const anchored = flag === undefined ? await commitOf(remote!, false, root) : first!;
+    if ('reason' in anchored) return unresolved(anchored.reason);
+    if (head === null) return unresolved(noHead);
+    at = flag ?? remote!;
+    measured = await configAt(anchored.sha, root);
+    if ('reason' in measured) return unresolved(`${CONFIG_FILE} on ${at} does not load, and the round is measured by it: ${measured.reason}`);
+    // The commit --base names is the base; on the remote's default branch,
+    // the base is what the configuration there names, or that branch.
+    const configured = flag === undefined ? measured.base : null;
+    source = flag !== undefined ? 'flag' : configured !== null ? 'config' : 'remote';
+    found = configured === null ? anchored : configured === workspace.config.base ? first : await commitOf(configured, true, root);
+    own = workspace.config.base === null ? anchored.sha : first === null || 'reason' in first ? null : first.sha;
+  } else {
+    if (first === null) return unresolved('no base is named and the remote has no default branch; pass --base <ref> or set "base"');
+    if ('reason' in first) return unresolved(first.reason);
+    if (head === null) return unresolved(noHead);
+    anchor = 'merge-base';
+    source = 'config';
+    const before = await mergeBase(first.sha, head, root);
+    if (before === null) return unresolved(`"${first.ref}" and HEAD share no history`);
+    at = `the merge base with ${first.ref}, ${before.slice(0, 12)}`;
+    measured = await configAt(before, root);
+    if ('reason' in measured) return unresolved(`${CONFIG_FILE} at ${at} does not load, and the round is measured by it: ${measured.reason}`);
+    // A merge base with no base configured, as before the harness was set
+    // up, says nothing of one, and the work tree's stands.
+    const stands = measured.base === null || measured.base === named;
+    found = stands ? first : await commitOf(measured.base!, true, root);
+    if (stands) common = before;
+    own = first.sha;
+  }
+  // The base is the work tree's, read in the first wave, only where it is
+  // the one the anchor configures, which is a name: the null is the
+  // compiler's, and what it says is equivalent to its mutants.
+  if (found === null || 'reason' in found) return unresolved(found === null ? 'no base is named' : found.reason);
+  common ??= await mergeBase(found.sha, head, root);
+  if (common === null) return unresolved(`"${found.ref}" and HEAD share no history`);
+  const changes: ConfigChange[] = [];
+  // Under --base the work tree's base is not read, so it changes nothing.
+  // Elsewhere it is a change where it names another commit than the base,
+  // or none: "main" beside a remote whose default branch is origin/main
+  // names what the base is, in other words.
+  if (flag === undefined && workspace.config.base !== measured.base && own !== found.sha) {
+    changes.push({ key: 'base', workTree: workspace.config.base ?? "the remote's default branch", measured: found.ref, at });
+  }
+  const signers = measured.rulings.allowedSigners;
+  if (workspace.config.rulings.allowedSigners !== signers) changes.push({ key: 'rulings.allowedSigners', workTree: workspace.config.rulings.allowedSigners, measured: signers, at });
+  return { kind: 'resolved', ref: found.ref, source, sha: found.sha, mergeBase: common, head, anchor, signers, changes };
 }
 
 /* ----------------------------------------------------------------- rulings */
@@ -141,11 +253,23 @@ export async function checkRulings(workspace: Workspace, brief: Pick<BriefRow, '
   if (base.kind === 'unresolved') {
     return { rows, verified: [], unverified: allows.map((row) => ({ id: row.id, reason: `no base to read the allowed signers from: ${base.reason}` })), problems: findings };
   }
-  const signers = await show(base.sha, workspace.config.rulings.allowedSigners, workspace.root);
-  if (signers === null) {
-    const reason = `${base.ref} has no ${workspace.config.rulings.allowedSigners}, so no signature can count`;
+  // A signer counts where it is on the base and was there as the round
+  // began: one the base's tip has and the merge base had not was added
+  // while the round ran, and where the round chose its base, the tip is
+  // the round's own (ADR-0006).
+  // Where the round began at the base's tip the two are one file, read once.
+  const tip = show(base.sha, base.signers, workspace.root);
+  const [atTip, atStart] = await Promise.all([tip, base.mergeBase === base.sha ? tip : show(base.mergeBase, base.signers, workspace.root)]);
+  if (atTip === null || atStart === null) {
+    const missing = atTip === null ? base.ref : `the merge base with ${base.ref}, ${base.mergeBase.slice(0, 12)},`;
+    const reason = `${missing} has no ${base.signers}, so no signature can count`;
     return { rows, verified: [], unverified: allows.map((row) => ({ id: row.id, reason })), problems: findings };
   }
+  const before = new Set(atStart.split('\n').map((line) => line.trim()));
+  const signers = atTip
+    .split('\n')
+    .filter((line) => before.has(line.trim()))
+    .join('\n');
   // Only verify-commit below reads this copy, so where it is kept is
   // equivalent to its mutants. It is named by the whole digest, read as hex
   // from its bytes: a digest asked for in no encoding, which a mutant of
@@ -802,6 +926,13 @@ async function briefAssertions(
   return { outcomes, unreadable };
 }
 
+/**
+ * Where a base read at the merge base was read from, said where
+ * `--require-measured` fails the run for it: the round can make that
+ * commit its own by beginning the base it names.
+ */
+const UNANCHORED = "the work tree's .spec-harness.json and the merge base of HEAD with the base it names";
+
 export interface AuditResult {
   readonly brief: BriefRow;
   readonly base: Base;
@@ -811,7 +942,7 @@ export interface AuditResult {
   readonly installScripts: readonly InstallScriptChange[];
 }
 
-export async function runAudit(workspace: Workspace, brief: BriefRow, reader: DocumentReader, baseFlag: string | undefined): Promise<AuditResult> {
+export async function runAudit(workspace: Workspace, brief: BriefRow, reader: DocumentReader, baseFlag: string | undefined, requireMeasured = false): Promise<AuditResult> {
   const { audit, tally } = await import('./audit.js');
   const base = await resolveBase(workspace, baseFlag);
   const text = await briefText(workspace, brief);
@@ -827,6 +958,8 @@ export async function runAudit(workspace: Workspace, brief: BriefRow, reader: Do
   const report = audit({
     brief,
     unmeasured,
+    configChanges: base.kind === 'resolved' ? base.changes : [],
+    requireMeasured: requireMeasured ? { unanchored: base.kind === 'resolved' && base.anchor === 'merge-base' ? UNANCHORED : null } : undefined,
     dependencies,
     archive,
     assertions: 'unavailable' in assertions ? assertions : assertions.outcomes,

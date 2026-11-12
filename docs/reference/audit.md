@@ -39,6 +39,25 @@ A part that could not be measured is a finding, never a silence. Each of these i
 - `protection-rooted` and `ruling-path-rooted`: a pattern in `protectedFiles`, or a path of a signed ruling, that a leading `/` roots, alone or on a brace alternative, such as `/src/db/schema.ts`. It protects no path, so the round could change the file it meant to protect, or allows nothing, so the file is still refused. Write the protection without the slash; a ruling's path is fixed by a new ruling.
 - `manifest-name-rooted`: a name a leading `/` roots at the filesystem's root, alone or on a brace alternative, such as `/package.json` or `{/Gemfile,Cargo.toml}`. Every path the audit reads is repository-relative, so the rooted part names no manifest; write the name without the slash, since a name is matched at any depth.
 
+## What the round is measured by
+
+The base and the allowed-signers file vouch for the round, so the round does not choose them: the work tree's `.spec-harness.json` is the round's to edit. They are read from the configuration on a ref the round cannot move ([ADR-0006](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0006-a-ruling-is-a-signed-commit.md), amended 2026-11-12):
+
+| Where | The base | The allowed signers |
+| --- | --- | --- |
+| `--base <ref>` | that commit | the file `rulings.allowedSigners` names in the `.spec-harness.json` of that commit |
+| the remote's default branch, `refs/remotes/origin/HEAD`, where git records one | what `base` says in the `.spec-harness.json` there, or that branch | as named there |
+| neither | the base the work tree names, read again at the merge base of HEAD with it: what `base` says there, where it says one | as named there |
+
+The third is weaker: where a round begins the branch its work tree names as the base, the merge base is the round's own commit. Pass `--base` in CI, where a fresh checkout records no default branch.
+
+- A signer counts where the allowed-signers file lists it both on the base and at the merge base of HEAD with it. One added on the base while the round ran counts once the round is rebased onto it.
+- `harness-config-changed`, a warning, says where the work tree's file names another base, a branch that names another commit, or another allowed-signers file: `the work tree's .spec-harness.json measures the round from evil, where origin/main has main: the round is measured from main`. The change counts once it is on the base.
+- A `base` of `"main"` beside a remote whose default branch is `origin/main` names the same commit, and is no change.
+- `doctor` reads the allowed-signers file the same way.
+
+**`--require-measured`** fails the run, exit 1 and `ok: false`, where the round was not measured, or was measured by what it can change: `unmeasured` and `archive/scope-unmeasured` are errors under it, and `harness-config-unanchored`, an error it alone reports, says where the base and the allowed signers were read at the merge base. Without it, nothing of this fails a run but under `--strict`. Round 30 makes it the default, as the next minor after the D4 freeze.
+
 ## What it measured
 
 What was measured is said beside what was found, so an audit that found nothing can be told from one that checked nothing ([spec-core's ADR-0005](https://github.com/spec-family/spec-core/blob/main/docs/adr/0005-the-family-contract.md)). It is the line above the counts, which stay the last line:
@@ -88,11 +107,13 @@ A job that runs on every branch audits the round on a brief's branch, and on any
 - A round that is named is audited as it is without the flag.
 - Where nothing names a brief, the line is `no brief is named by --brief, SPEC_BRIEF or the branch, so there is no round to audit, and --if-round passes the run`. Under `pretty` the line, either one, is the output. The other formats print what a run that found nothing prints, and say the line on stderr, where a script or a forge reads none of it: `--format json` has `ok: true`, `brief`, `base` and `measured` `null`, every count 0 and no finding, dependency or install script; `gitlab` an empty report; `sarif` a run with no result, the line as its note; `github` nothing.
 
-On GitHub Actions, as a step of the [README's job](../../README.md#in-ci), which fetches the base with its history:
+On GitHub Actions, as a step of the [README's job](../../README.md#in-ci), which fetches the base with its history. `--base` names the branch the pull request merges into, or the repository's default branch on a push, as the forge has it, and `--require-measured` fails a run that could not measure the round ([What the round is measured by](#what-the-round-is-measured-by)); the branch name goes through `env`, never into the line itself, where a name could run as a command:
 
 ```yaml
       - if: ${{ !cancelled() }}
-        run: npx --no-install @spec-family/spec-harness audit --if-round --format github
+        env: # the branch the round merges into, as the forge names it, which the round cannot move
+          BASE: origin/${{ github.base_ref || github.event.repository.default_branch }}
+        run: npx --no-install @spec-family/spec-harness audit --if-round --require-measured --base "$BASE" --format github
 ```
 
 In GitLab CI:
@@ -105,7 +126,7 @@ spec-harness:
   script:
     - git fetch origin main # the base's branch, read as remotes/origin/main
     - npm ci
-    - npx --no-install @spec-family/spec-harness audit --if-round --format gitlab > gl-spec-harness.json
+    - npx --no-install @spec-family/spec-harness audit --if-round --require-measured --base remotes/origin/main --format gitlab > gl-spec-harness.json
   artifacts:
     when: always
     reports:

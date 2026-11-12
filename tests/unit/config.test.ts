@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CONFIG_FILE, ConfigError, DEFAULT_CONFIG, DEFAULT_MANIFESTS, parseConfig, SIBLINGS } from '../../src/config.js';
+import { CONFIG_FILE, ConfigError, configFromText, DEFAULT_CONFIG, DEFAULT_MANIFESTS, parseConfig, SIBLINGS } from '../../src/config.js';
 
 function refusal(raw: unknown, file?: string): string {
   try {
@@ -92,6 +92,18 @@ describe('every key', () => {
     expect(parseConfig({ tools: { 'spec-graph': ['spec-graph'] } }).tools['spec-graph']).toEqual(['spec-graph']);
     // The defaults are not shared with the configuration that changed them.
     expect(DEFAULT_CONFIG.tools['spec-brief']).toBeNull();
+  });
+});
+
+describe('the file as text', () => {
+  it('reads past a byte order mark, as spec-brief and spec-graph do, and refuses what is not JSON, naming the file', () => {
+    const mark = String.fromCharCode(0xfeff);
+    expect(configFromText(`${mark}{ "base": "trunk" }\n`).base).toBe('trunk');
+    expect(configFromText('{ "outOfScope": "deny" }').outOfScope).toBe('deny');
+    expect(() => configFromText(`${mark}${mark}{}`)).toThrow(/^\.spec-harness\.json is not valid JSON: /);
+    expect(() => configFromText('{', 'custom.json')).toThrow(ConfigError);
+    expect(() => configFromText('{', 'custom.json')).toThrow(/^custom\.json is not valid JSON: /);
+    expect(() => configFromText('[]', 'custom.json')).toThrow(/^custom\.json must hold a JSON object$/);
   });
 });
 
