@@ -68,13 +68,18 @@ function pathsOf(finding: WaiveContext['findings'][number]): string[] {
   return [...(finding.paths ?? [])];
 }
 
+/** A scope change a ruling may lift: one that names its pattern, and not the pattern that bounds nothing. */
+function liftable(finding: Finding): boolean {
+  return finding.rule === 'scope-changed' && finding.path !== undefined && finding.path !== UNBOUNDED;
+}
+
 export async function waive(context: WaiveContext): Promise<Waiver[]> {
   const protectedPaths = context.findings.filter((finding) => finding.rule === 'protected-file').flatMap(pathsOf);
-  // What a mutant puts on the empty list in place of no warnings has no
-  // rule, so the filter leaves it out: that mutant is equivalent.
-  const changes = [...context.findings, ...(context.warnings ?? [])].filter((finding) => finding.rule === 'scope-changed' && finding.path !== undefined && finding.path !== UNBOUNDED);
-  // Asking git about nothing waives nothing: this saves the asking, and its
-  // mutant is equivalent.
+  // Among the refusals under `--strict`, among the warnings otherwise.
+  const changes = [...context.findings.filter(liftable), ...(context.warnings?.filter(liftable) ?? [])];
+  // A round with nothing a ruling could lift reads nothing: not the
+  // configuration, which may not load, nor git, so the plugin does not fail
+  // where it has nothing to answer.
   if (protectedPaths.length === 0 && changes.length === 0) return [];
   const { config } = await loadConfig(context.root);
   const workspace: Workspace = {

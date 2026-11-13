@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { briefIdFromBranch } from '../../src/branch.js';
-import { DEFAULT_CONFIG } from '../../src/config.js';
+import { ConfigError, DEFAULT_CONFIG } from '../../src/config.js';
 import specHarnessPlugin, { waive } from '../../src/plugin.js';
 import { brief, BRIEF_FILE, cleanup, cli, guardCannotRead, parsed, repository, SPEC_BRIEF, temp, write } from './helpers.js';
 
@@ -96,9 +96,17 @@ describe('the spec-brief plugin', () => {
     expect(specHarnessPlugin()).toEqual({ name: 'spec-harness', rules: [], waive });
   });
 
-  it('waives nothing, and asks git nothing, when no protected file is refused', async () => {
-    const context = { root: temp(), brief: { id: '001', file: BRIEF_FILE, text: '' }, findings: [{ rule: 'open-task' }], base: null, commit: null };
-    expect(await waive(context)).toEqual([]);
+  it('reads neither the configuration nor git where nothing is refused or warned of that a ruling could lift', async () => {
+    // No repository, and a configuration that does not load: a waiver that
+    // read either would fail.
+    const root = temp();
+    write(root, '.spec-harness.json', '{');
+    const context = { root, brief: { id: '001', file: BRIEF_FILE, text: '' }, base: null, commit: null };
+    expect(await waive({ ...context, findings: [{ rule: 'open-task' }] })).toEqual([]);
+    expect(await waive({ ...context, findings: [{ rule: 'scope-changed', path: '**', paths: ['src/a.ts'] }], warnings: [{ rule: 'scope-changed', paths: ['src/a.ts'] }] })).toEqual([]);
+    // Where a ruling could lift one, it reads them.
+    await expect(waive({ ...context, findings: [{ rule: 'protected-file', path: 'src/a.ts' }] })).rejects.toThrow(ConfigError);
+    await expect(waive({ ...context, findings: [], warnings: [{ rule: 'scope-changed', path: 'src/**', paths: [] }] })).rejects.toThrow(ConfigError);
   });
 
   it('reads the paths a finding lists, and waives none of them without a signed ruling', async () => {
