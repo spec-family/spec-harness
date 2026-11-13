@@ -267,6 +267,20 @@ timeout lost, in shards of 10m15s to 44m42s against their 60, and the
 mutant, and none survived having run no test. The core sweep of ac40ca6
 (run 43076735879) read 98.69% over 7,334, its 96 undetected 0.24.2's.
 
+For 0.26.0, round 29's security fixes, `hook codex` and `hook copilot`,
+the waiver of `scope-changed` and `audit --require-measured`, the sweep of
+4b28123 (run 43457868242) read 98.18% over 13,840 mutants, 97.57% with
+every timeout lost, in shards of 23m37s to 37m58s against their 60, and
+the `break` stays 95. Of its 252 undetected mutants, four are not 0.25.0's:
+`hook codex` and `hook copilot`'s test of the configuration's file, three
+mutants of one condition, and their list of decisions, each equivalent and
+said beside its code in `cli.ts`. The others the comparison found new
+before the release, two in the plugin, are killed (#183), and none survived
+having run no test. The core sweep of d917d7e (run 43470502318) read
+98.81% over 7,986, its 95 undetected 0.25.0's, after a test of the unit
+suite killed the one it had added, `--require-measured` in audit's options
+(#184).
+
 One runner took 69 to 130 minutes for the full sweep. Before any sharded
 sweep ran, the report of eb39599 was cut into shards the way Stryker writes
 them and put back by the merge: all 7,507 verdicts came back with their
