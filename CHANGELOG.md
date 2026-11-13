@@ -160,6 +160,13 @@ cannot turn a run red. The family's policy is
   spec-harness prints no colour, so `--no-color` changes nothing; refused,
   it stopped a line written for the whole family with exit 2.
 
+- **The spec-brief plugin waives spec-brief's `scope-changed`** where a
+  person ruled on the change: a signed ruling that names the dropped or
+  added pattern itself, or signed rulings that allow every file the change
+  let through. A change that let no file through yet, and an `affectedFiles`
+  emptied, are not waived. It reads the warnings spec-brief 0.15.0 hands a
+  plugin, and an earlier spec-brief hands none, so nothing changes with it.
+
 ### Fixed
 
 - The hint on a write outside the scope said the archive reports every such
