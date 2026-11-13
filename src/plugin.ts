@@ -70,6 +70,8 @@ function pathsOf(finding: WaiveContext['findings'][number]): string[] {
 
 export async function waive(context: WaiveContext): Promise<Waiver[]> {
   const protectedPaths = context.findings.filter((finding) => finding.rule === 'protected-file').flatMap(pathsOf);
+  // What a mutant puts on the empty list in place of no warnings has no
+  // rule, so the filter leaves it out: that mutant is equivalent.
   const changes = [...context.findings, ...(context.warnings ?? [])].filter((finding) => finding.rule === 'scope-changed' && finding.path !== undefined && finding.path !== UNBOUNDED);
   // Asking git about nothing waives nothing: this saves the asking, and its
   // mutant is equivalent.
@@ -107,9 +109,10 @@ export async function waive(context: WaiveContext): Promise<Waiver[]> {
       waivers.push({ rule: 'scope-changed', path: pattern, reason: `ruling ${named.id}, signed by ${named.signer}, names ${pattern}` });
       continue;
     }
-    const files = change.paths ?? [];
+    const files = change.paths;
+    if (files === undefined || files.length === 0) continue;
     const covering = files.map((file) => rulingFor(verified, file));
-    if (files.length === 0 || covering.includes(undefined)) continue;
+    if (covering.includes(undefined)) continue;
     const ids = [...new Set(covering.map((ruling) => `${ruling!.id}, signed by ${ruling!.signer}`))];
     waivers.push({ rule: 'scope-changed', path: pattern, reason: `every file it let through is allowed: ${ids.map((id) => `ruling ${id}`).join('; ')}` });
   }

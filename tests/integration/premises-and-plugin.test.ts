@@ -255,6 +255,25 @@ describe.skipIf(!hasSshKeygen())('the spec-brief plugin', () => {
     expect(await asked([{ rule: 'scope-changed', paths: ['src/db/schema.ts'] }])).toEqual([]);
     // Named twice, waived once.
     expect(await asked([{ rule: 'scope-changed', path: 'src/db/**', paths: [] }], [{ rule: 'scope-changed', path: 'src/db/**', paths: [] }])).toHaveLength(1);
+    // Beside a waiver of another rule for the same path, and of another pattern, each waived.
+    expect(
+      await asked(
+        [
+          { rule: 'scope-changed', path: 'src/db/schema.ts', paths: [] },
+          { rule: 'scope-changed', path: 'src/db/**', paths: [] },
+        ],
+        [{ rule: 'protected-file', path: 'src/db/schema.ts' }],
+      ),
+    ).toEqual([
+      { rule: 'protected-file', path: 'src/db/schema.ts', reason: 'ruling R-001-1, signed by t@example.com, allows it' },
+      { rule: 'scope-changed', path: 'src/db/schema.ts', reason: 'ruling R-001-1, signed by t@example.com, names src/db/schema.ts' },
+      { rule: 'scope-changed', path: 'src/db/**', reason: 'ruling R-001-2, signed by t@example.com, names src/db/**' },
+    ]);
+    // Files two rulings allow between them, each named once; and a change that names no files at all.
+    expect(await asked([{ rule: 'scope-changed', path: 'src/**', paths: ['src/db/schema.ts', 'src/db/other.ts', 'src/db/more.ts'] }])).toEqual([
+      { rule: 'scope-changed', path: 'src/**', reason: 'every file it let through is allowed: ruling R-001-1, signed by t@example.com; ruling R-001-2, signed by t@example.com' },
+    ]);
+    expect(await asked([{ rule: 'scope-changed', path: 'lib/**' }])).toEqual([]);
   });
 
   it('waives no scope change for a spec-brief that hands no warnings, nor for a ruling nobody signed', async () => {
