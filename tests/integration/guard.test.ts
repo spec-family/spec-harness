@@ -1,10 +1,11 @@
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { repositoryPath } from '../../src/fs.js';
 import type { Decision } from '../../src/guard.js';
-import { brief, BRIEF_FILE, cleanup, cli, ignoresCase, parsed, repository, temp, type Repository } from './helpers.js';
+import { brief, BRIEF_FILE, cleanup, cli, ignoresCase, parsed, repository, siblingsSayingNoProblem, SPEC_BRIEF, temp, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -142,11 +143,16 @@ describe('guard under the repository\'s configuration', () => {
   });
 
   it('fails closed on a protection whose braces expand to no path, which protected every path, and names such a scope pattern', async () => {
-    // Quoted, or YAML reads the braces as a mapping.
-    const noPath = repository({
-      [BRIEF_FILE]: brief({ affected: ['**'], protected: ['"{./,src}"'] }),
-      'briefs/002_scope.md': brief({ title: '002 - Scope', affected: ['"{./,src}"', 'docs/**'] }),
-    });
+    // Quoted, or YAML reads the braces as a mapping. The harness's own
+    // reading, as of a spec-brief before 0.15.0, which says nothing of the
+    // pattern; a later one says it cannot read it (below).
+    const noPath = repository(
+      {
+        [BRIEF_FILE]: brief({ affected: ['**'], protected: ['"{./,src}"'] }),
+        'briefs/002_scope.md': brief({ title: '002 - Scope', affected: ['"{./,src}"', 'docs/**'] }),
+      },
+      { tools: siblingsSayingNoProblem() },
+    );
     const unreadable = '{./,src} (the braces expand to "./", which names no path)';
     expect((await decisions(['README.md', '--brief', '1'], noPath.root))[0]).toMatchObject({
       verdict: 'deny',
@@ -161,7 +167,7 @@ describe('guard under the repository\'s configuration', () => {
 
   it('fails closed on a protection too large to compile, in the command and the hook, with spec-core\'s reason', async () => {
     const huge = `${'{a,b}'.repeat(8)}/${'x'.repeat(300)}`;
-    const large = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'], protected: [`"${huge}"`] }) });
+    const large = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'], protected: [`"${huge}"`] }) }, { tools: siblingsSayingNoProblem() });
     const message = `brief 001 protects files with a pattern that cannot be read: ${huge} (the pattern compiles to more than 65536 states)`;
     expect((await decisions(['src/a.ts', '--brief', '1'], large.root))[0]).toMatchObject({ verdict: 'deny', reason: 'unreadable-protection', message });
     const stdin = JSON.stringify({ cwd: large.root, hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: join(large.root, 'src', 'a.ts') } });
@@ -170,5 +176,19 @@ describe('guard under the repository\'s configuration', () => {
     const answer = JSON.parse(hook.stdout) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
     expect(answer.hookSpecificOutput.permissionDecision).toBe('deny');
     expect(answer.hookSpecificOutput.permissionDecisionReason).toContain(message);
+  });
+
+  it("holds every write in spec-brief's words where the installed spec-brief says it cannot read a protection, and decides by the rest where it says nothing", async () => {
+    // A leading "/" roots a protection at the filesystem's root, where it
+    // protects no path. spec-brief 0.15.0 and later list it among the
+    // brief's problems; an earlier one lists the pattern as written, which
+    // the guard reads itself (audit.test.ts, protection-rooted). What the
+    // installed one says is read from it, so the test runs at either.
+    const rooted = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'], protected: ['/src/db/schema.ts'] }), 'src/db/schema.ts': 'table;\n' });
+    const listed = JSON.parse(execFileSync(process.execPath, [SPEC_BRIEF, 'list', '--format', 'json'], { cwd: rooted.root, encoding: 'utf8' })) as { briefs: { problems?: { message: string }[] }[] };
+    const problems = listed.briefs[0]?.problems ?? [];
+    const [decided] = await decisions(['src/db/schema.ts', '--brief', '1'], rooted.root);
+    if (problems.length === 0) expect(decided).toMatchObject({ verdict: 'allow', reason: 'in-scope' });
+    else expect(decided).toMatchObject({ verdict: 'deny', reason: 'unreadable-protection', message: expect.stringContaining(`spec-brief cannot read brief 001 whole, so what it protects cannot be told: ${problems[0]?.message}`) });
   });
 });

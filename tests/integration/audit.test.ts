@@ -5,7 +5,7 @@ import type { Finding } from '../../src/types.js';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { brief, BRIEF_FILE, cleanup, cli, git, guardCannotRead, parsed, repository, siblings, SPEC_BRIEF, temp, write, type Repository } from './helpers.js';
+import { brief, BRIEF_FILE, cleanup, cli, git, guardCannotRead, parsed, repository, siblings, siblingsSayingNoProblem, SPEC_BRIEF, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -504,7 +504,10 @@ describe('audit of a round', () => {
   });
 
   it('warns about a protection a leading "/" roots, which let the round change the file it meant to protect', async () => {
-    const r = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'], protected: ['/src/db/schema.ts'] }), 'src/db/schema.ts': 'table;\n' });
+    // A spec-brief before 0.15.0, which lists the pattern as written; a
+    // later one says it cannot read it, and the guard holds every write
+    // (guard.test.ts).
+    const r = repository({ [BRIEF_FILE]: brief({ affected: ['src/**'], protected: ['/src/db/schema.ts'] }), 'src/db/schema.ts': 'table;\n' }, { tools: siblingsSayingNoProblem() });
     r.git('checkout', '-q', '-b', 'brief/001-x');
     // The guard lets the write through: the protection names no path it decides.
     expect((await cli(['guard', 'src/db/schema.ts', '--format', 'json'], r.root)).code).toBe(0);
