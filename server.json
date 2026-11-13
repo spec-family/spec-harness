@@ -8,13 +8,13 @@
     "source": "github",
     "id": "1388054407"
   },
-  "version": "0.25.0",
+  "version": "0.26.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@spec-family/spec-harness",
-      "version": "0.25.0",
+      "version": "0.26.0",
       "transport": {
         "type": "stdio"
       },

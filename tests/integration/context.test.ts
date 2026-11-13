@@ -7,7 +7,7 @@ import { tools } from '../../src/server.js';
 import { declaredVersion } from '../../src/siblings.js';
 import { meets, parseVersion } from '../../src/versions.js';
 import { openWorkspace, parseOptions } from '../../src/workspace.js';
-import { brief, BRIEF_FILE, cleanup, cli, guardRule, parsed, repository, ROOT, SPEC_BRIEF, temp, write, type Repository } from './helpers.js';
+import { brief, BRIEF_FILE, cleanup, cli, guardRule, parsed, repository, ROOT, siblingsSayingNoProblem, SPEC_BRIEF, temp, write, type Repository } from './helpers.js';
 
 afterAll(cleanup);
 
@@ -148,13 +148,18 @@ describe('context', () => {
   it('keeps the rules over the rest of the scope when a pattern in it is rooted, alone or on a brace alternative', async () => {
     // spec-guard refuses a path outside the repository, and with it the
     // whole question: asked about /docs beside src, it answered for neither.
-    // A rooted base puts no path in the scope, and is not asked about.
-    const rooted = repository({
-      'briefs/001_braced.md': brief({ title: '001 - Braced', affected: ['"{/docs,src/**}"'] }),
-      'briefs/002_alone.md': brief({ title: '002 - Alone', affected: ['/docs', 'src/**'] }),
-      'docs/adr/0001-sessions.md': ADR,
-      'src/auth/a.ts': 'a;\n',
-    });
+    // A rooted base puts no path in the scope, and is not asked about. The
+    // guard decides by the rest where spec-brief says nothing of the pattern,
+    // as one before 0.15.0 says nothing; a later one says it cannot read it.
+    const rooted = repository(
+      {
+        'briefs/001_braced.md': brief({ title: '001 - Braced', affected: ['"{/docs,src/**}"'] }),
+        'briefs/002_alone.md': brief({ title: '002 - Alone', affected: ['/docs', 'src/**'] }),
+        'docs/adr/0001-sessions.md': ADR,
+        'src/auth/a.ts': 'a;\n',
+      },
+      { tools: siblingsSayingNoProblem() },
+    );
     const rules = async (id: string): Promise<string> => {
       const result = await cli(['context', id], rooted.root);
       expect(result.code).toBe(0);
@@ -261,15 +266,21 @@ describe('context', () => {
     let unread: Repository;
 
     beforeAll(() => {
-      unread = repository({
-        // Quoted, or YAML reads the brackets and braces as its own.
-        'briefs/001_mixed.md': brief({ title: '001 - Some readable', affected: ['src/auth/**', '"src/[a"', `"${huge}"`, '"{./,lib}"'] }),
-        'briefs/002_none.md': brief({ title: '002 - None readable', affected: ['"src/[a"', '"{./,lib}"'] }),
-        'briefs/003_protections.md': brief({ title: '003 - Protections', affected: ['src/auth/**'], protected: ['lib/**', '"src/[a"', `"${huge}"`, '"{./,lib}"'] }),
-        'docs/adr/0001-sessions.md': `${ADR}\n<!-- @assert-absence target="lib" symbol="OldLib" reason="lib is frozen" -->\n`,
-        'src/auth/a.ts': 'a;\n',
-        'lib/b.ts': 'b;\n',
-      });
+      // The harness's own reading of each pattern, as of a spec-brief before
+      // 0.15.0, which says nothing of them; a later one says it cannot read
+      // them, and the guard holds every write in its words (guard.test.ts).
+      unread = repository(
+        {
+          // Quoted, or YAML reads the brackets and braces as its own.
+          'briefs/001_mixed.md': brief({ title: '001 - Some readable', affected: ['src/auth/**', '"src/[a"', `"${huge}"`, '"{./,lib}"'] }),
+          'briefs/002_none.md': brief({ title: '002 - None readable', affected: ['"src/[a"', '"{./,lib}"'] }),
+          'briefs/003_protections.md': brief({ title: '003 - Protections', affected: ['src/auth/**'], protected: ['lib/**', '"src/[a"', `"${huge}"`, '"{./,lib}"'] }),
+          'docs/adr/0001-sessions.md': `${ADR}\n<!-- @assert-absence target="lib" symbol="OldLib" reason="lib is frozen" -->\n`,
+          'src/auth/a.ts': 'a;\n',
+          'lib/b.ts': 'b;\n',
+        },
+        { tools: siblingsSayingNoProblem() },
+      );
     });
 
     it('with spec-core\'s reason, in the packet and in JSON, and asks spec-guard about the rest of the scope', async () => {

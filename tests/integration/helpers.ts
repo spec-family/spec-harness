@@ -228,6 +228,36 @@ export function siblings(): Record<string, string[]> {
 }
 
 /**
+ * The siblings, with a spec-brief whose list says nothing of what it could
+ * not read, as one before 0.15.0 says nothing: the installed copy, its
+ * list's `problems` taken away. Where spec-brief says it cannot read a
+ * brief's pattern, the guard holds every write in its words, and reads the
+ * pattern itself only where spec-brief says nothing (ADR-0005); a test of
+ * that reading runs it through this one, whichever release is installed.
+ */
+export function siblingsSayingNoProblem(): Record<string, string[]> {
+  const directory = temp();
+  write(
+    directory,
+    'spec-brief.mjs',
+    [
+      "import { spawnSync } from 'node:child_process';",
+      'const args = process.argv.slice(2);',
+      `const run = spawnSync(process.execPath, [${JSON.stringify(SPEC_BRIEF)}, ...args], { encoding: 'utf8' });`,
+      "if (args[0] === 'list' && args.includes('json') && run.status === 0) {",
+      '  const listed = JSON.parse(run.stdout);',
+      '  for (const row of listed.briefs) delete row.problems;',
+      '  process.stdout.write(JSON.stringify(listed));',
+      '} else process.stdout.write(run.stdout);',
+      'process.stderr.write(run.stderr);',
+      'process.exit(run.status ?? 1);',
+      '',
+    ].join('\n'),
+  );
+  return { ...siblings(), 'spec-brief': ['node', join(directory, 'spec-brief.mjs')] };
+}
+
+/**
  * spec-guard's JSON answer to `args`, asked in `root` of the copy the suite
  * runs. How a release words a rule, or a directive it cannot read, is its
  * own to choose, and the suite runs the lockfile's release and, in CI's

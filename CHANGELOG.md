@@ -9,7 +9,20 @@ only fixes, reports less or documents, so `^0.7.0` takes only releases that
 cannot turn a run red. The family's policy is
 [spec-core's ADR-0009](https://github.com/spec-family/spec-core/blob/main/docs/adr/0009-versions-before-1-0.md).
 
-## Unreleased
+## 0.26.0
+
+A round can no longer choose its own base or allowed signers, or make an
+unsigned ruling count through the checkout's git configuration; a brief
+spec-brief cannot read whole holds the guard, and a path through a share
+on this machine no longer gets past it on Windows. `hook codex` and
+`hook copilot` guard the writes of Codex and Copilot, the spec-brief
+plugin waives a `scope-changed` warning a person ruled on, and
+`audit --require-measured` fails a round that was not measured. A freeze
+minor (round 29's D4): outside the security fixes, no field is renamed or
+taken away and no exit code changes its meaning, and what is new is
+opt-in, a warning or a note. The minimum spec-brief stays 0.12.0, and
+the guard tells a brief spec-brief cannot read whole only with spec-brief
+0.15.0 or later, the first that says so.
 
 ### Security
 
@@ -61,17 +74,6 @@ cannot turn a run red. The family's policy is
   share on this machine is refused, since it can be the repository by
   another name
   ([ADR-0005](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0005-a-guard-is-a-guardrail.md)).
-
-- **The write guard says it covers Claude Code only.** GitHub Copilot and
-  Cursor read `.claude/settings.json` and run the hook line `init` wrote
-  there, and neither reads the answer: Copilot holds every edit, and
-  Cursor lets every one through, with no word. `hook claude` now says in
-  one line to the person, exit 0, that the write is not checked, where the
-  question carries Cursor's `cursor_version`, Copilot's `toolName` or
-  `toolArgs`, an event of Cursor's or Gemini CLI's, or a tool the guard does
-  not know that names a file or carries a patch, as Codex's `apply_patch`
-  does. The README and the guard reference say so
-  ([ADR-0012](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0012-one-way-into-claude-code.md)).
 
 - **A brief spec-brief cannot read whole no longer leaves the guard off.**
   spec-brief listed a field it could not parse as empty, so a brief whose

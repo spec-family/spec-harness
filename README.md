@@ -233,7 +233,7 @@ Run `doctor` without `--strict`, which fails where the release of Claude Code ca
 
 ## Verified
 
-CI's full mutation sweep reads **98.01% over 12,686 mutants** on ac40ca6 (run 43076735805), the sweep of 0.25.0, and its `break` is 95. The core sweep, which mutates the pure modules against the unit suite on every change, reads 98.69% over 7,334 mutants on ac40ca6 (run 43076735879), and fails a change under 97. [ADR-0010](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0010-toolchain-and-verification.md) has each release's sweep, and what a survivor it adds must be before it ships.
+CI's full mutation sweep reads **98.18% over 13,840 mutants** on 4b28123 (run 43457868242), the sweep of 0.26.0, and its `break` is 95. The core sweep, which mutates the pure modules against the unit suite on every change, reads 98.81% over 7,986 mutants on d917d7e (run 43470502318), and fails a change under 97. [ADR-0010](https://github.com/spec-family/spec-harness/blob/main/docs/adr/0010-toolchain-and-verification.md) has each release's sweep, and what a survivor it adds must be before it ships.
 
 ## Design
 
